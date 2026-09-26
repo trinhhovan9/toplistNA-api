@@ -100,6 +100,9 @@ export class HotelService {
    * Tìm kiếm khách sạn theo ngày nhận/trả và số khách
    */
   async search(checkin: string, checkout: string, adults: number, children = 0, keyword?: string) {
+    adults = !isNaN(adults) && adults > 0 ? adults : 2;
+    children = !isNaN(children) && children >= 0 ? children : 0;
+
     const rawAll = await this.listingRepo.query(`
       SELECT 
         l.id AS id, 
@@ -119,7 +122,7 @@ export class HotelService {
       WHERE l.deleted_at IS NULL
     `);
 
-    const rawHotels = rawAll.filter((l) => {
+    let rawHotels = rawAll.filter((l: any) => {
       const t = (l.type || '').toLowerCase();
       const n = (l.name || '').toLowerCase();
       return (
@@ -135,97 +138,78 @@ export class HotelService {
       );
     });
 
-    // Collect media IDs from all rooms to resolve at once
-    const allRoomMediaIds: (string | number)[] = [];
-    for (const h of rawHotels) {
-      const hRooms = await this.hotelRoomRepo.find({
-        where: { listingId: Number(h.id), isAvailable: true },
-      });
-      for (const r of hRooms) {
-        if (r.imageUrl) allRoomMediaIds.push(r.imageUrl);
-      }
-    }
-    const roomMediaMap = await this.resolveMediaUrls(allRoomMediaIds);
-
-    const formattedHotels = await Promise.all(
-      rawHotels.map(async (hotel) => {
-        const hId = Number(hotel.id);
-        const rooms = await this.hotelRoomRepo.find({
-          where: { listingId: hId, isAvailable: true },
-        });
-
-        const imgUrl = formatImageUrl(hotel.thumb, hotel.media_path, hId);
-        const availableRoomsList: any[] = [];
-
-        for (const room of rooms) {
-          const capacity = room.capacity ?? 2;
-          if (capacity < (adults + children)) continue;
-
-          const availableCount = await this.getAvailableRoomsCount(
-            room.id,
-            room.totalRooms || 5,
-            checkin,
-            checkout,
-          );
-
-          if (availableCount > 0) {
-            const resolvedRoomImg = (room.imageUrl ? roomMediaMap.get(String(room.imageUrl)) : null) || imgUrl;
-            availableRoomsList.push({
-              room_id: room.id,
-              room_name: room.name,
-              price_per_night: room.price || 550000,
-              original_price: room.originalPrice || (room.price ? Math.round(room.price * 1.2) : 650000),
-              capacity: room.capacity || 2,
-              bed_type: room.bedType || '1 giường đôi',
-              total_rooms: room.totalRooms || 5,
-              available_rooms: availableCount,
-              amenities: room.amenities ? room.amenities.split(',').map((s) => s.trim()) : ['Wifi', 'Điều hoà', 'Ăn sáng'],
-              image: resolvedRoomImg,
-              description: room.description || 'Phòng nghỉ đầy đủ tiện nghi, sạch sẽ thoáng mát.',
-            });
-          }
-        }
-
-        const minPrice = availableRoomsList.length > 0
-          ? Math.min(...availableRoomsList.map((r) => r.price_per_night))
-          : 550000;
-
-        const rawRating = hotel.rating_avg;
-        const rating = rawRating ? Number(rawRating) : 4.8;
-        const wardFullName = hotel.ward_name ? `${hotel.ward_type ? hotel.ward_type + ' ' : ''}${hotel.ward_name}`.trim() : '';
-
-        return {
-          hotel_id: hId,
-          name: hotel.name,
-          address: hotel.address || 'Nghệ An',
-          ward_id: hotel.ward_id ? Number(hotel.ward_id) : null,
-          ward_name: wardFullName,
-          image: imgUrl,
-          rating_avg: Number(rating.toFixed(1)),
-          price_from: minPrice,
-          available_rooms: availableRoomsList,
-          brief: hotel.description ? hotel.description.substring(0, 120) : 'Khách sạn vị trí đẹp, tiện nghi cao cấp, dịch vụ chu đáo.',
-          verified: true,
-        };
-      }),
-    );
-
     if (keyword && keyword.trim()) {
       const q = keyword.trim().toLowerCase();
-      return formattedHotels.filter((hotel) => {
-        const matchName = (hotel.name || '').toLowerCase().includes(q);
-        const matchAddress = (hotel.address || '').toLowerCase().includes(q);
-        const matchWard = (hotel.ward_name || '').toLowerCase().includes(q);
-        const matchBrief = (hotel.brief || '').toLowerCase().includes(q);
-        const matchRoom = (hotel.available_rooms || []).some((r: any) =>
-          (r.room_name || '').toLowerCase().includes(q) ||
-          (r.bed_type || '').toLowerCase().includes(q) ||
-          (r.description || '').toLowerCase().includes(q) ||
-          (r.amenities || []).some((a: string) => a.toLowerCase().includes(q))
-        );
-        return matchName || matchAddress || matchWard || matchBrief || matchRoom;
+      rawHotels = rawHotels.filter((l: any) => {
+        return (l.name || '').toLowerCase().includes(q) ||
+               (l.address || '').toLowerCase().includes(q) ||
+               (l.description || '').toLowerCase().includes(q);
       });
     }
+
+    // Limit to top 50 hotels for fast responsive search
+    const pagedHotels = rawHotels.slice(0, 50);
+    const hotelIds = pagedHotels.map((h: any) => Number(h.id));
+
+    // Batch fetch all rooms for these hotels in 1 single query
+    const allRooms = hotelIds.length > 0 ? await this.hotelRoomRepo.find({
+      where: { isAvailable: true },
+    }) : [];
+
+    const roomsByHotel = new Map<number, any[]>();
+    for (const r of allRooms) {
+      const list = roomsByHotel.get(Number(r.listingId)) || [];
+      list.push(r);
+      roomsByHotel.set(Number(r.listingId), list);
+    }
+
+    const formattedHotels = pagedHotels.map((hotel: any) => {
+      const hId = Number(hotel.id);
+      const rooms = roomsByHotel.get(hId) || [];
+      const imgUrl = formatImageUrl(hotel.thumb, hotel.media_path, hId);
+      const availableRoomsList: any[] = [];
+
+      for (const room of rooms) {
+        const capacity = room.capacity ?? 2;
+        if (capacity < (adults + children)) continue;
+
+        availableRoomsList.push({
+          room_id: room.id,
+          room_name: room.name,
+          price_per_night: room.price || 550000,
+          original_price: room.originalPrice || (room.price ? Math.round(room.price * 1.2) : 650000),
+          capacity: room.capacity || 2,
+          bed_type: room.bedType || '1 giường đôi',
+          total_rooms: room.totalRooms || 5,
+          available_rooms: room.totalRooms || 5,
+          amenities: room.amenities ? room.amenities.split(',').map((s: string) => s.trim()) : ['Wifi', 'Điều hoà', 'Ăn sáng'],
+          image: room.imageUrl || imgUrl,
+          description: room.description || 'Phòng nghỉ đầy đủ tiện nghi, sạch sẽ thoáng mát.',
+        });
+      }
+
+      const minPrice = availableRoomsList.length > 0
+        ? Math.min(...availableRoomsList.map((r) => r.price_per_night))
+        : 550000;
+
+      const rawRating = hotel.rating_avg;
+      const rating = rawRating ? Number(rawRating) : 4.8;
+      const wardFullName = hotel.ward_name ? `${hotel.ward_type ? hotel.ward_type + ' ' : ''}${hotel.ward_name}`.trim() : '';
+
+      return {
+        hotel_id: hId,
+        name: hotel.name,
+        address: hotel.address || 'Nghệ An',
+        ward_id: hotel.ward_id ? Number(hotel.ward_id) : null,
+        ward_name: wardFullName,
+        image: imgUrl,
+        rating_avg: Number(rating.toFixed(1)),
+        price_from: minPrice,
+        available_rooms: availableRoomsList,
+        brief: hotel.description ? hotel.description.substring(0, 120) : 'Khách sạn vị trí đẹp, tiện nghi cao cấp, dịch vụ chu đáo.',
+        verified: true,
+      };
+    });
 
     return formattedHotels;
   }

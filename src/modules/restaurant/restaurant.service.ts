@@ -424,7 +424,7 @@ export class RestaurantService {
     } catch (_) {}
 
     const menuItems = await this.menuItemRepo.find({
-      where: { listingId, isAvailable: true },
+      where: { listingId },
       order: { categoryName: 'ASC', iorder: 'ASC' },
     });
 
@@ -494,42 +494,7 @@ export class RestaurantService {
       });
     }
 
-    // If menu_items is empty in DB, provide authentic menu items using real photos
-    if (menuItems.length === 0) {
-      const genDish = generateBestSeller(listing.name, listing.type);
-      const cat = 'Món nổi bật của quán';
-      categories[cat] = [
-        {
-          id: listing.id * 10 + 1,
-          name: genDish.name,
-          description: listing.description || 'Món ngon đặc sản nổi bật của quán được yêu thích nhất',
-          price: genDish.price,
-          original_price: null,
-          image_url: null,
-          is_available: true,
-          voucher_tag: genDish.price >= 40000 ? 'Giảm 10K' : null,
-          voucher_amount: genDish.price >= 40000 ? 10000 : null,
-          voucher_code: genDish.price >= 40000 ? 'TOPLIST10K' : null,
-        },
-      ];
-      if (realPhotoUrls.length > 1) {
-        for (let i = 1; i < Math.min(realPhotoUrls.length, 6); i++) {
-          const dPrice = genDish.price + i * 10000;
-          categories[cat].push({
-            id: listing.id * 10 + 1 + i,
-            name: `${genDish.name} (Phần ${i + 1})`,
-            description: 'Hương vị thơm ngon chế biến theo công thức truyền thống',
-            price: dPrice,
-            original_price: null,
-            image_url: null,
-            is_available: true,
-            voucher_tag: dPrice >= 40000 ? 'Giảm 10K' : null,
-            voucher_amount: dPrice >= 40000 ? 10000 : null,
-            voucher_code: dPrice >= 40000 ? 'TOPLIST10K' : null,
-          });
-        }
-      }
-    }
+
 
     return {
       listing: {
