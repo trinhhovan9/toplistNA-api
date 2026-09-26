@@ -75,27 +75,8 @@ export function formatImageUrl(thumb: any, mediaPath?: string | null): string {
   return 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=500&q=60';
 }
 
-function generateBestSeller(name: string, type: string, searchQuery = '') {
-  const s = searchQuery.toLowerCase();
-  const n = (name || '').toLowerCase();
+// No fake seed dishes - ToplistNA uses real dishes added by merchants
 
-  if (s.includes('lươn') || n.includes('lươn')) {
-    return { name: 'Súp Lươn Niêu Đất Xứ Nghệ', price: 45000, image_url: null };
-  } else if (s.includes('phở') || n.includes('phở')) {
-    return { name: 'Phở bò tái lăn nạm gầu đặc sản', price: 50000, image_url: null };
-  } else if (s.includes('cơm') || n.includes('cơm')) {
-    return { name: 'Cơm tấm sườn nướng chả trứng 37', price: 45000, image_url: null };
-  } else if (s.includes('bún') || n.includes('bún')) {
-    return { name: 'Bún bò Huế giò heo chả cua', price: 48000, image_url: null };
-  } else if (s.includes('ốc') || n.includes('ốc')) {
-    return { name: 'Ốc mỡ xào bơ tỏi bánh mì giòn', price: 55000, image_url: null };
-  } else if (s.includes('lẩu') || n.includes('lẩu')) {
-    return { name: 'Lẩu hải sản chua cay TP Vinh', price: 189000, image_url: null };
-  } else if (type === 'cafe' || n.includes('coffee') || s.includes('trà') || s.includes('cafe')) {
-    return { name: 'Cà Phê Muối Kem Béo Xứ Nghệ', price: 29000, image_url: null };
-  }
-  return { name: 'Món đặc sản bán chạy nhất quán', price: 45000, image_url: null };
-}
 
 @Injectable()
 export class RestaurantService {
@@ -315,18 +296,14 @@ export class RestaurantService {
       results: paged.map((l) => {
         const realPhotos = storeRealImagesMap[l.id] || [];
         const storeImg = formatImageUrl(l.thumb, l.media_path) || (realPhotos.length > 0 ? realPhotos[0] : '');
-        const generatedDish = generateBestSeller(l.name, l.type, searchQuery);
-        const bestSeller = bestSellerMap[l.id] || {
-          id: 0,
-          name: generatedDish.name,
-          price: generatedDish.price,
-          image_url: null,
-        };
+        const bestSeller = bestSellerMap[l.id] || null;
 
-        if (bestSeller.image_url && !bestSeller.image_url.includes('unsplash.com')) {
-          bestSeller.image_url = bestSeller.image_url.startsWith('http') ? bestSeller.image_url : formatImageUrl(null, bestSeller.image_url);
-        } else {
-          bestSeller.image_url = null;
+        if (bestSeller && bestSeller.image_url) {
+          if (!bestSeller.image_url.includes('unsplash.com')) {
+            bestSeller.image_url = bestSeller.image_url.startsWith('http') ? bestSeller.image_url : formatImageUrl(null, bestSeller.image_url);
+          } else {
+            bestSeller.image_url = null;
+          }
         }
 
         const eta = etaMap.get(l.id) || {
