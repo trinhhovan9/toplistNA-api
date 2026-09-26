@@ -332,35 +332,38 @@ export class HotelService {
     }
 
     // 4. Lấy TẤT CẢ đơn đặt phòng trùng lịch [checkin, checkout)
-    // Điều kiện trùng lịch: r.checkinDate < checkoutDate AND r.checkoutDate > checkinDate
-    const overlappingReservations = await this.reservationRepo
-      .createQueryBuilder('r')
-      .where('r.listingId = :hotelId', { hotelId })
-      .andWhere("r.status NOT IN ('cancelled', 'rejected')")
-      .andWhere('r.checkinDate < :checkoutDate AND r.checkoutDate > :checkinDate', {
-        checkinDate: checkin,
-        checkoutDate: checkout,
-      })
-      .getMany();
-
     const bookedRoomIds = new Map<number, HotelReservation>();
     const bookedRoomNumbers = new Map<string, HotelReservation>();
     const genericBookingsByRoomType = new Map<number, number>();
 
-    for (const r of overlappingReservations) {
-      if (r.physicalRoomId) {
-        bookedRoomIds.set(Number(r.physicalRoomId), r);
-      }
-      if (r.roomNumber) {
-        const nums = String(r.roomNumber).split(',').map((s) => s.trim()).filter(Boolean);
-        for (const num of nums) {
-          bookedRoomNumbers.set(num, r);
+    try {
+      const overlappingReservations = await this.reservationRepo
+        .createQueryBuilder('r')
+        .where('r.listingId = :hotelId', { hotelId })
+        .andWhere("r.status NOT IN ('cancelled', 'rejected')")
+        .andWhere('r.checkinDate < :checkoutDate AND r.checkoutDate > :checkinDate', {
+          checkinDate: checkin,
+          checkoutDate: checkout,
+        })
+        .getMany();
+
+      for (const r of overlappingReservations) {
+        if (r.physicalRoomId) {
+          bookedRoomIds.set(Number(r.physicalRoomId), r);
+        }
+        if (r.roomNumber) {
+          const nums = String(r.roomNumber).split(',').map((s) => s.trim()).filter(Boolean);
+          for (const num of nums) {
+            bookedRoomNumbers.set(num, r);
+          }
+        }
+        if (!r.physicalRoomId && !r.roomNumber && r.roomType) {
+          const count = genericBookingsByRoomType.get(Number(r.roomType)) || 0;
+          genericBookingsByRoomType.set(Number(r.roomType), count + (r.numberOfRooms || 1));
         }
       }
-      if (!r.physicalRoomId && !r.roomNumber && r.roomType) {
-        const count = genericBookingsByRoomType.get(Number(r.roomType)) || 0;
-        genericBookingsByRoomType.set(Number(r.roomType), count + (r.numberOfRooms || 1));
-      }
+    } catch (err: any) {
+      this.logger.warn(`Could not check overlapping reservations for hotel ${hotelId}: ${err.message}`);
     }
 
     const remainingGenericBooked = new Map<number, number>(genericBookingsByRoomType);
