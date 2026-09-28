@@ -93,7 +93,7 @@ export class FireGoService {
         const errorText = await res.text();
         this.logger.error(`[FireGo Pricing Engine] Error ${res.status}: ${errorText}`);
         throw new BadRequestException(
-          `Không thể tính cước vận chuyển từ FireGo: ${res.statusText}`,
+          `Không thể tính cước vận chuyển từ FireGo (${res.status}): ${res.statusText || 'Lỗi dịch vụ'}`,
         );
       }
 
@@ -112,7 +112,7 @@ export class FireGoService {
       this.logger.error(`[FireGo Pricing Engine] Connection error: ${err.message}`);
       if (err instanceof BadRequestException) throw err;
       throw new BadRequestException(
-        'Không thể kết nối đến hệ thống tính cước FireGo. Vui lòng thử lại sau giây lát.',
+        `Không thể kết nối đến hệ thống tính cước FireGo: ${err.message}`,
       );
     }
   }

@@ -27,13 +27,13 @@ export class RestaurantReservation {
   @Column({ nullable: true })
   email: string;
 
-  @Column({ name: 'guest_count', nullable: true, type: 'int' })
+  @Column({ name: 'number_of_guests', nullable: true, type: 'int' })
   guestCount: number;
 
   @Column({ name: 'reservation_time', nullable: true })
   reservationTime: Date;
 
-  @Column({ nullable: true, type: 'text' })
+  @Column({ name: 'note', nullable: true, type: 'text' })
   notes: string;
 
   @Column({ nullable: true, default: 'pending' })
