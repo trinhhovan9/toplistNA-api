@@ -821,6 +821,7 @@ export class HotelService {
       phoneNumber: dto.phoneNumber,
       email: dto.email || '',
       checkinDate: new Date(dto.checkinDate) as any,
+      dateOfArrival: new Date(dto.checkinDate) as any,
       checkoutDate: new Date(dto.checkoutDate) as any,
       checkinTime: '14:00',
       numberOfNights: priceCalculation.numberOfNights,

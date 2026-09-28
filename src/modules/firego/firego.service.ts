@@ -101,12 +101,14 @@ export class FireGoService {
     };
 
     const targetUrl = `${this.firegoUrl}/api/pricing/estimate`;
+    const headers = this.getFiregoHeaders();
+    this.logger.log(`[FireGo Pricing Engine] Target: ${targetUrl}, Headers: ${JSON.stringify(headers)}`);
     this.logger.log(`[FireGo Pricing Engine] Requesting estimate: ${JSON.stringify(payload)}`);
 
     try {
       const res = await fetch(targetUrl, {
         method: 'POST',
-        headers: this.getFiregoHeaders(),
+        headers,
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(6000),
       });

@@ -36,6 +36,9 @@ export class HotelReservation {
   @Column({ name: 'checkout_date', nullable: true, type: 'date' })
   checkoutDate: Date;
 
+  @Column({ name: 'date_of_arrival', nullable: true, type: 'date' })
+  dateOfArrival: Date;
+
   @Column({ name: 'checkin_time', nullable: true, type: 'time' })
   checkinTime: string;
 
