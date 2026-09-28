@@ -1519,36 +1519,44 @@ export class HotelService {
     const saved = await this.reservationRepo.save(booking);
 
     // Cập nhật trạng thái phòng vật lý đồng bộ (hỗ trợ cả 1 hoặc nhiều phòng đặt cùng lúc)
-    const targetRoomNumbers: string[] = [];
-    if (booking.roomNumber) {
-      targetRoomNumbers.push(...String(booking.roomNumber).split(',').map((s) => s.trim()).filter(Boolean));
-    }
+    try {
+      const targetRoomNumbers: string[] = [];
+      if (booking.roomNumber) {
+        targetRoomNumbers.push(...String(booking.roomNumber).split(',').map((s) => s.trim()).filter(Boolean));
+      }
 
-    if (status === 'checked_in') {
-      if (booking.physicalRoomId) {
-        await this.physicalRoomRepo.update({ id: booking.physicalRoomId }, { status: 'occupied' });
+      if (status === 'checked_in') {
+        if (booking.physicalRoomId) {
+          await this.physicalRoomRepo.update({ id: booking.physicalRoomId }, { status: 'occupied' });
+        }
+        for (const rNum of targetRoomNumbers) {
+          await this.physicalRoomRepo.update(
+            { listingId: hotelId, roomNumber: rNum },
+            { status: 'occupied' },
+          );
+        }
+      } else if (status === 'completed' || status === 'cancelled' || status === 'rejected') {
+        if (booking.physicalRoomId) {
+          await this.physicalRoomRepo.update({ id: booking.physicalRoomId }, { status: 'available' });
+        }
+        for (const rNum of targetRoomNumbers) {
+          await this.physicalRoomRepo.update(
+            { listingId: hotelId, roomNumber: rNum },
+            { status: 'available' },
+          );
+        }
       }
-      for (const rNum of targetRoomNumbers) {
-        await this.physicalRoomRepo.update(
-          { listingId: hotelId, roomNumber: rNum },
-          { status: 'occupied' },
-        );
-      }
-    } else if (status === 'completed' || status === 'cancelled' || status === 'rejected') {
-      if (booking.physicalRoomId) {
-        await this.physicalRoomRepo.update({ id: booking.physicalRoomId }, { status: 'available' });
-      }
-      for (const rNum of targetRoomNumbers) {
-        await this.physicalRoomRepo.update(
-          { listingId: hotelId, roomNumber: rNum },
-          { status: 'available' },
-        );
-      }
+    } catch (e: any) {
+      this.logger.warn(`[HotelBooking] Failed to update physical room status: ${e?.message}`);
     }
 
     if (status === 'completed') {
-      // Đảm bảo đối soát ví nếu chưa cộng
-      await this.storeWalletService.settleHotelBookingRevenue(saved);
+      try {
+        // Đảm bảo đối soát ví nếu chưa cộng
+        await this.storeWalletService.settleHotelBookingRevenue(saved);
+      } catch (e: any) {
+        this.logger.warn(`[HotelBooking] Failed to settle hotel revenue: ${e?.message}`);
+      }
     }
 
     // Bắn Push Notification báo cho khách hàng khi khách sạn xác nhận hoặc cập nhật
@@ -1807,34 +1815,42 @@ export class HotelService {
    * Quét mã QR hoặc nhập mã để Check-in nhận phòng tức thì (Hỗ trợ mọi định dạng thẻ/mã)
    */
   async checkInByQrCode(hotelId: number, codeOrId: string) {
-    const booking = await this.findBookingByCodeOrId(hotelId, codeOrId);
+    try {
+      const booking = await this.findBookingByCodeOrId(hotelId, codeOrId);
 
-    if (booking.status === 'checked_in') {
+      if (booking.status === 'checked_in') {
+        return {
+          success: true,
+          alreadyCheckedIn: true,
+          message: `Đơn phòng #${booking.bookingCode || booking.id} đã làm thủ tục nhận phòng trước đó!`,
+          booking,
+        };
+      }
+
+      if (booking.status === 'completed') {
+        throw new BadRequestException(`Đơn phòng #${booking.bookingCode || booking.id} đã hoàn tất trả phòng trước đó!`);
+      }
+
+      if (booking.status === 'cancelled' || booking.status === 'rejected') {
+        throw new BadRequestException(`Đơn phòng #${booking.bookingCode || booking.id} đã bị hủy!`);
+      }
+
+      // Cập nhật trạng thái sang 'checked_in' bằng updateBookingStatus để đồng bộ mọi thông báo, socket, phòng
+      const res = await this.updateBookingStatus(hotelId, booking.id, 'checked_in');
+
       return {
         success: true,
-        alreadyCheckedIn: true,
-        message: `Đơn phòng #${booking.bookingCode || booking.id} đã làm thủ tục nhận phòng trước đó!`,
-        booking,
+        alreadyCheckedIn: false,
+        message: `Nhận phòng thành công #${booking.bookingCode || booking.id}! Phòng ${booking.roomNumber || ''} đã chuyển sang Đang lưu trú.`,
+        booking: res.booking,
       };
+    } catch (err: any) {
+      this.logger.error(`[checkInByQrCode] Error checking in hotelId=${hotelId}, code=${codeOrId}: ${err?.message || err}`, err?.stack);
+      if (err instanceof BadRequestException || err instanceof NotFoundException) {
+        throw err;
+      }
+      throw new BadRequestException(err?.message || 'Không thể thực hiện Check-in nhận phòng. Vui lòng thử lại!');
     }
-
-    if (booking.status === 'completed') {
-      throw new BadRequestException(`Đơn phòng #${booking.bookingCode || booking.id} đã hoàn tất trả phòng trước đó!`);
-    }
-
-    if (booking.status === 'cancelled' || booking.status === 'rejected') {
-      throw new BadRequestException(`Đơn phòng #${booking.bookingCode || booking.id} đã bị hủy!`);
-    }
-
-    // Cập nhật trạng thái sang 'checked_in' bằng updateBookingStatus để đồng bộ mọi thông báo, socket, phòng
-    const res = await this.updateBookingStatus(hotelId, booking.id, 'checked_in');
-
-    return {
-      success: true,
-      alreadyCheckedIn: false,
-      message: `Nhận phòng thành công #${booking.bookingCode || booking.id}! Phòng ${booking.roomNumber || ''} đã chuyển sang Đang lưu trú.`,
-      booking: res.booking,
-    };
   }
 
   // ==========================================

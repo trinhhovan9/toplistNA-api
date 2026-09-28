@@ -583,6 +583,7 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
 
     const finalDeliveryAddress = `${cleanAddress} - Người nhận: ${effectiveCustomerName} (${effectiveCustomerPhone})`;
 
+    const now = new Date();
     const order = this.orderRepo.create({
       orderCode,
       userId: finalUserId,
@@ -613,6 +614,8 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
       paymentMethod: paymentMethod || 'cash',
       paymentStatus: 'unpaid',
       orderStatus: (paymentMethod && paymentMethod !== 'cash' && paymentMethod !== 'cod') ? 'pending_payment' : 'pending',
+      createdAt: now,
+      updatedAt: now,
     });
 
     const savedOrder = await this.orderRepo.save(order) as Order;
@@ -638,8 +641,11 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
 
     const isOnlinePayment = paymentMethod && paymentMethod !== 'cash' && paymentMethod !== 'cod';
 
+    const orderIsoDate = (savedOrder.createdAt ? new Date(savedOrder.createdAt) : now).toISOString();
+
     // Build the full response payload
     const responsePayload = {
+      id: savedOrder.id,
       order_id: savedOrder.id,
       order_code: savedOrder.orderCode,
       listing_id: finalListingId,
@@ -659,6 +665,10 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
       payment_method: paymentMethod || 'cash',
       payment_status: 'unpaid',
       order_status: isOnlinePayment ? 'pending_payment' : 'pending',
+      customer_name: effectiveCustomerName,
+      customer_phone: effectiveCustomerPhone,
+      delivery_address: finalDeliveryAddress,
+      note: note || '',
       items: savedItems.map((i) => ({
         id: i.id,
         menu_item_id: i.menuItemId,
@@ -671,7 +681,10 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
         note: i.note,
       })),
       items_count: savedItems.length,
-      created_at: savedOrder.createdAt,
+      created_at: orderIsoDate,
+      created_at_iso: orderIsoDate,
+      order_time: orderIsoDate,
+      timestamp: orderIsoDate,
     };
 
     // Chỉ phát thông báo đơn mới tới Quán nếu là đơn COD (đơn Online chỉ phát khi thanh toán xong PAID)
@@ -941,8 +954,8 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
       shipping_fee: order.shippingFee,
       discount_amount: order.discountAmount,
       total_amount: order.totalAmount,
-      created_at: order.createdAt,
-      order_time: order.createdAt,
+      created_at: (order.createdAt ? new Date(order.createdAt) : new Date()).toISOString(),
+      order_time: (order.createdAt ? new Date(order.createdAt) : new Date()).toISOString(),
     };
   }
 
@@ -1015,7 +1028,8 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
           order_status: o.orderStatus,
           status: o.orderStatus,
           note: o.note,
-          created_at: o.createdAt,
+          created_at: (o.createdAt ? new Date(o.createdAt) : (o.updatedAt ? new Date(o.updatedAt) : new Date())).toISOString(),
+          order_time: (o.createdAt ? new Date(o.createdAt) : (o.updatedAt ? new Date(o.updatedAt) : new Date())).toISOString(),
           items: (o.items || []).map((i) => ({
             id: i.id,
             menu_item_id: i.menuItemId,
@@ -1081,14 +1095,27 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
         else if (o.orderStatus === 'completed') uiStatus = 'completed';
         else if (o.orderStatus === 'cancelled') uiStatus = 'cancelled';
 
-        let createdAtFormatted = 'Vừa xong';
+        let validDate: Date | null = null;
         if (o.createdAt) {
           const d = new Date(o.createdAt);
-          const hours = d.getHours().toString().padStart(2, '0');
-          const minutes = d.getMinutes().toString().padStart(2, '0');
-          const isToday = new Date().toDateString() === d.toDateString();
-          createdAtFormatted = isToday ? `${hours}:${minutes} - Hôm nay` : `${hours}:${minutes} - ${d.getDate()}/${d.getMonth() + 1}`;
+          if (!isNaN(d.getTime())) validDate = d;
+        } else if (o.updatedAt) {
+          const d = new Date(o.updatedAt);
+          if (!isNaN(d.getTime())) validDate = d;
         }
+
+        const fallbackDate = new Date();
+        const effectiveDate = validDate || fallbackDate;
+        const hours = effectiveDate.getHours().toString().padStart(2, '0');
+        const minutes = effectiveDate.getMinutes().toString().padStart(2, '0');
+        const day = effectiveDate.getDate().toString().padStart(2, '0');
+        const month = (effectiveDate.getMonth() + 1).toString().padStart(2, '0');
+        const year = effectiveDate.getFullYear();
+        const isToday = new Date().toDateString() === effectiveDate.toDateString();
+        const createdAtFormatted = isToday
+          ? `${hours}:${minutes} - Hôm nay (${day}/${month})`
+          : `${hours}:${minutes} - ${day}/${month}/${year}`;
+        const createdAtIso = effectiveDate.toISOString();
 
         const isPaid = o.paymentStatus === 'paid' || o.paymentMethod === 'vietqr' || o.paymentMethod === 'online';
 
@@ -1116,7 +1143,8 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
           delivery_address: o.deliveryAddress,
           distance_km: o.distanceKm ? Number(o.distanceKm) : 1.8,
           created_at: createdAtFormatted,
-          created_at_iso: o.createdAt,
+          created_at_iso: createdAtIso,
+          order_time: createdAtIso,
           prep_minutes: 15,
           remaining_seconds: uiStatus === 'cooking' ? 600 : 0,
           status: uiStatus,

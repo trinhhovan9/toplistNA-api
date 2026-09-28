@@ -284,6 +284,17 @@ export class PaymentService {
     // Socket realtime
     this.orderGateway.emitOrderUpdate(order.orderCode, updatePayload, order.id);
 
+    const paidIsoDate = (order.createdAt ? new Date(order.createdAt) : new Date()).toISOString();
+    this.orderGateway.emitNewOrder({
+      ...updatePayload,
+      listing_id: order.listingId,
+      paid_online: true,
+      created_at: paidIsoDate,
+      created_at_iso: paidIsoDate,
+      order_time: paidIsoDate,
+      timestamp: paidIsoDate,
+    });
+
     // Gửi FCM Push tới Chủ Quán & Khách hàng bất đồng bộ
     (async () => {
       try {
