@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import * as crypto from 'crypto';
 import { Order } from '../../entities/order.entity';
 import { Listing } from '../../entities/listing.entity';
 import { User } from '../../entities/user.entity';
@@ -29,6 +30,27 @@ export class FireGoService {
 
   private get internalSecret(): string {
     return process.env.FIREGO_INTERNAL_SECRET || 'firego_toplistna_secret_2026';
+  }
+
+  private get appSecuritySecret(): string {
+    return process.env.APP_SECURITY_SECRET || 'FireGo_AppSecret_@2026!xK9#mP2$qL7&nR4';
+  }
+
+  private getFiregoHeaders(): Record<string, string> {
+    const timestamp = Date.now().toString();
+    const platform = 'ios';
+    const signature = crypto
+      .createHash('sha256')
+      .update(`${this.appSecuritySecret}:${platform}:${timestamp}`)
+      .digest('hex');
+
+    return {
+      'Content-Type': 'application/json',
+      'X-App-Platform': platform,
+      'X-App-Timestamp': timestamp,
+      'X-App-Signature': signature,
+      'X-FireGo-Secret': this.internalSecret,
+    };
   }
 
   constructor(
@@ -84,9 +106,9 @@ export class FireGoService {
     try {
       const res = await fetch(targetUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getFiregoHeaders(),
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(4500),
+        signal: AbortSignal.timeout(6000),
       });
 
       if (!res.ok) {

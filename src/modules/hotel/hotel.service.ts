@@ -339,9 +339,9 @@ export class HotelService {
     try {
       const overlappingReservations = await this.reservationRepo
         .createQueryBuilder('r')
-        .where('r.listingId = :hotelId', { hotelId })
+        .where('r.listing_id = :hotelId', { hotelId })
         .andWhere("r.status NOT IN ('cancelled', 'rejected')")
-        .andWhere('r.checkinDate < :checkoutDate AND r.checkoutDate > :checkinDate', {
+        .andWhere('r.checkin_date < :checkoutDate AND r.checkout_date > :checkinDate', {
           checkinDate: checkin,
           checkoutDate: checkout,
         })
@@ -756,13 +756,13 @@ export class HotelService {
       for (const rNum of roomNums) {
         const conflict = await this.reservationRepo
           .createQueryBuilder('r')
-          .where('r.listingId = :hotelId', { hotelId: dto.hotelId })
+          .where('r.listing_id = :hotelId', { hotelId: dto.hotelId })
           .andWhere("r.status NOT IN ('cancelled', 'rejected')")
-          .andWhere('r.checkinDate < :checkoutDate AND r.checkoutDate > :checkinDate', {
+          .andWhere('r.checkin_date < :checkoutDate AND r.checkout_date > :checkinDate', {
             checkinDate: dto.checkinDate,
             checkoutDate: dto.checkoutDate,
           })
-          .andWhere('r.roomNumber LIKE :rNum', { rNum: `%${rNum}%` })
+          .andWhere('r.room_number LIKE :rNum', { rNum: `%${rNum}%` })
           .getOne();
 
         if (conflict) {
@@ -774,13 +774,13 @@ export class HotelService {
     } else if (dto.physicalRoomId) {
       const conflict = await this.reservationRepo
         .createQueryBuilder('r')
-        .where('r.listingId = :hotelId', { hotelId: dto.hotelId })
+        .where('r.listing_id = :hotelId', { hotelId: dto.hotelId })
         .andWhere("r.status NOT IN ('cancelled', 'rejected')")
-        .andWhere('r.checkinDate < :checkoutDate AND r.checkoutDate > :checkinDate', {
+        .andWhere('r.checkin_date < :checkoutDate AND r.checkout_date > :checkinDate', {
           checkinDate: dto.checkinDate,
           checkoutDate: dto.checkoutDate,
         })
-        .andWhere('r.physicalRoomId = :physId', { physId: dto.physicalRoomId })
+        .andWhere('r.physical_room_id = :physId', { physId: dto.physicalRoomId })
         .getOne();
 
       if (conflict) {
