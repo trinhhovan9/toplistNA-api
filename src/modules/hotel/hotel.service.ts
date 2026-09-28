@@ -891,7 +891,7 @@ export class HotelService {
           bookingCode,
           hotelId: dto.hotelId,
         },
-        'default',
+        'alarm',
       );
     } catch (e: any) {
       this.logger.warn(`[HotelBooking] Failed to push to hotel owner: ${e.message}`);

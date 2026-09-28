@@ -155,7 +155,9 @@ function stripEmojis(str: string): string {
     const cleanTitle = stripEmojis(title);
     const cleanBody = stripEmojis(body);
 
-    // Cấu hình push message với Priority High và Channel có sound/vibrate
+    const isCustomSound = isOrderAlert || sound === 'alarm' || sound === 'chuong';
+
+    // Cấu hình push message với Priority High và Channel có sound/vibrate chuong.mp3
     const message: Message = {
       token: token.trim(),
       notification: {
@@ -170,9 +172,9 @@ function stripEmojis(str: string): string {
         priority: 'high',
         notification: {
           channelId,
-          sound: 'default',
+          sound: isCustomSound ? 'chuong' : 'default',
           priority: 'max',
-          defaultSound: true,
+          defaultSound: !isCustomSound,
           defaultVibrateTimings: true,
           visibility: 'public',
         },
@@ -181,7 +183,7 @@ function stripEmojis(str: string): string {
         payload: {
           aps: {
             alert: { title: cleanTitle, body: cleanBody },
-            sound: 'default',
+            sound: isCustomSound ? 'chuong.mp3' : 'default',
             badge: 1,
             contentAvailable: true,
           },
