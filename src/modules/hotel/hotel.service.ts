@@ -984,13 +984,16 @@ export class HotelService {
     const conditions: string[] = [];
     const params: any = {};
 
-    if (filter.userId) {
+    if (filter.userId && Number(filter.userId) > 0) {
       conditions.push('r.user_id = :userId');
-      params.userId = filter.userId;
+      params.userId = Number(filter.userId);
     }
     if (filter.phone) {
-      conditions.push('r.phone_number = :phone');
-      params.phone = filter.phone;
+      const cleanPhone = filter.phone.replace(/\D/g, '');
+      if (cleanPhone.length >= 7) {
+        conditions.push("REPLACE(REPLACE(r.phone_number, ' ', ''), '-', '') LIKE :phone");
+        params.phone = `%${cleanPhone.slice(-9)}%`;
+      }
     }
 
     if (conditions.length === 0) {

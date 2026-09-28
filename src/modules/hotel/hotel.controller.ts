@@ -4,17 +4,22 @@ import { IsInt, IsNotEmpty, IsString, IsOptional, IsEmail, Min, IsNumber } from 
 import { HotelService } from './hotel.service';
 
 function extractUserIdFromRequest(req: any): number | null {
+  const customHeader = req.headers?.['x-user-id'] || req.headers?.['x-userid'];
+  if (customHeader && !isNaN(Number(customHeader)) && Number(customHeader) > 0) {
+    return Number(customHeader);
+  }
   const authHeader = req.headers?.authorization || req.headers?.Authorization;
-  if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) return null;
-  const token = authHeader.split(' ')[1];
-  try {
-    const parts = token.split('.');
-    if (parts.length === 3) {
-      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
-      const id = payload.sub ?? payload.id ?? payload.userId;
-      if (id && !isNaN(Number(id))) return Number(id);
-    }
-  } catch (_) {}
+  if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    try {
+      const parts = token.split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
+        const id = payload.sub ?? payload.id ?? payload.userId ?? payload.user_id;
+        if (id && !isNaN(Number(id))) return Number(id);
+      }
+    } catch (_) {}
+  }
   return null;
 }
 
@@ -42,6 +47,7 @@ export class CreateHotelBookingDto {
   @IsOptional() @IsString() note?: string;
   @IsOptional() @IsInt() physical_room_id?: number;
   @IsOptional() @IsString() room_number?: string;
+  @IsOptional() @IsInt() user_id?: number;
 }
 
 export class CreateRoomTypeDto {
@@ -179,8 +185,12 @@ export class HotelController {
   /** POST /api/v1/bookings */
   @Post('bookings')
   @ApiOperation({ summary: 'Đặt phòng khách sạn kèm snapshot tài chính' })
-  async createBooking(@Request() req, @Body() dto: CreateHotelBookingDto) {
-    const userId = extractUserIdFromRequest(req);
+  async createBooking(
+    @Request() req: any,
+    @Body() dto: CreateHotelBookingDto,
+    @Headers('x-user-id') headerUserId?: string,
+  ) {
+    const userId = dto.user_id || (headerUserId ? Number(headerUserId) : null) || extractUserIdFromRequest(req);
     const data = await this.hotelService.createBooking(userId, {
       hotelId: dto.hotel_id,
       roomId: dto.room_id,
