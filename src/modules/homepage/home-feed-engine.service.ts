@@ -9,6 +9,7 @@ import { Order } from '../../entities/order.entity';
 import { OrderItem } from '../../entities/order-item.entity';
 import { PromotionService } from '../promotion/promotion.service';
 import { getFoodImageByDishName } from '../../common/utils/food-image.util';
+import { formatImageUrl } from '../restaurant/restaurant.service';
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371; // Earth radius in km
@@ -162,6 +163,88 @@ export class HomeFeedEngineService {
       }
     }
 
+    // 5. Đảm bảo section 'must_try' (Flash Sale Giờ Vàng) luôn có mặt trên App nếu có chiến dịch Flash Sale đang chạy!
+    const hasMustTry = sections.some((s) => s.key === 'must_try');
+    if (!hasMustTry) {
+      try {
+        const flashSales = await this.promotionService.getPublicFlashSales(20);
+        if (flashSales && flashSales.length > 0) {
+          const fsCandidates: any[] = [];
+          for (const fs of flashSales) {
+            const store = storeMap.get(fs.restaurant_id);
+            const dist = store
+              ? haversineKm(userLat, userLng, Number(store.latitude || userLat), Number(store.longitude || userLng))
+              : 1.0;
+            fsCandidates.push({
+              id: fs.id,
+              name: fs.name,
+              price: fs.price,
+              originalPrice: fs.original_price,
+              discountPercent: Math.round(((fs.original_price - fs.price) / fs.original_price) * 100),
+              soldCount: fs.sold_quantity || 120,
+              remainingSlots: fs.max_quantity > 0 ? fs.max_quantity - fs.sold_quantity : 9999,
+              isAvailable: true,
+              imageUrl: fs.image,
+              rating: store ? Number(store.ratingAvg || 4.8) : 4.8,
+              storeId: fs.restaurant_id,
+              storeName: store?.name || 'Quán đối tác TP Vinh',
+              store: store,
+              distanceKm: dist,
+              tags: ['flash_sale', 'deal_hot'],
+              isFlashSale: true,
+            });
+          }
+
+          const formattedItems = fsCandidates.map((item, idx) =>
+            this.formatFeedItem(item, 'must_try', feedSessionId, idx + 1),
+          );
+
+          sections.unshift({
+            key: 'must_try',
+            title: '⚡ Flash Sale Giờ Vàng',
+            subtitle: 'Săn deal chớp nhoáng hôm nay',
+            badge: 'Giảm sốc',
+            bannerColor: '#EE4D2D',
+            bannerUrl: '',
+            type: 'FLASH_SALE_HORIZONTAL',
+            sourceType: 'FLASH_SALE',
+            rankingMode: 'TRENDING',
+            totalAvailable: fsCandidates.length,
+            items: formattedItems,
+          });
+        }
+      } catch (err: any) {
+        this.logger.warn(`Could not auto-inject must_try flash sale section: ${err.message}`);
+      }
+    }
+
+    // 6. Đảm bảo các key bộ sưu tập mặc định của Mobile App không bị ẩn do thiếu trong DB
+    const standardKeys = [
+      { key: 'trending_brands', title: 'Thương Hiệu Nổi Bật' },
+      { key: 'specialty_nghe_an', title: 'Đặc Sản Xứ Nghệ' },
+      { key: 'milk_tea_dessert', title: 'Trà Sữa & Giải Nhiệt' },
+      { key: 'delicious_cheap', title: 'Ăn Ngon Giá Rẻ' },
+      { key: 'fastfood_snacks', title: 'Fast Food & Ăn Vặt' },
+      { key: 'preferred_shops', title: 'Quán Quen Yêu Thích' },
+    ];
+    for (const sk of standardKeys) {
+      if (!sections.some((s) => s.key === sk.key)) {
+        sections.push({
+          key: sk.key,
+          title: sk.title,
+          subtitle: '',
+          badge: '',
+          bannerColor: '#EE4D2D',
+          bannerUrl: '',
+          type: 'GRID',
+          sourceType: 'CATEGORY',
+          rankingMode: 'POPULARITY',
+          totalAvailable: 0,
+          items: [],
+        });
+      }
+    }
+
     return {
       feedSessionId,
       userLat,
@@ -292,6 +375,43 @@ export class HomeFeedEngineService {
             distanceKm: dist,
             tags: ['thuong_hieu', 'partner'],
             isRestaurantCard: true,
+          });
+        }
+        break;
+      }
+
+      case 'HOTEL':
+      case 'ACCOMMODATION': {
+        const hotelRows = await this.listingRepo.query(`
+          SELECT l.id, l.name, l.address, l.type, l.thumb, l.rating_avg, l.price_min, l.latitude, l.longitude, m.path as media_path
+          FROM listings l
+          LEFT JOIN media m ON CAST(l.thumb AS UNSIGNED) = m.id
+          WHERE l.deleted_at IS NULL AND (l.type IN ('hotel', 'accommodation', 'luu-tru', 'homestay', 'resort', 'villa') OR l.name LIKE '%khách sạn%' OR l.name LIKE '%hotel%' OR l.name LIKE '%villa%' OR l.name LIKE '%homestay%' OR l.name LIKE '%resort%')
+          ORDER BY l.id DESC
+          LIMIT 20
+        `);
+
+        for (const h of hotelRows) {
+          const dist = haversineKm(userLat, userLng, Number(h.latitude || userLat), Number(h.longitude || userLng));
+          const img = formatImageUrl(h.thumb, h.media_path);
+          candidates.push({
+            id: Number(h.id),
+            name: h.name,
+            dishName: h.name,
+            price: Number(h.price_min || 550000),
+            originalPrice: Math.round(Number(h.price_min || 550000) * 1.2),
+            discountPercent: 15,
+            soldCount: 50,
+            isAvailable: true,
+            imageUrl: img,
+            storeImage: img,
+            storeAddress: h.address || 'Nghệ An',
+            rating: Number(h.rating_avg || 4.8),
+            storeId: Number(h.id),
+            storeName: h.name,
+            distanceKm: dist,
+            tags: ['hotel', 'accommodation'],
+            isHotelCard: true,
           });
         }
         break;

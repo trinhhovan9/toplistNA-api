@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, IsNull, DataSource } from 'typeorm';
 import { Order } from '../../entities/order.entity';
@@ -17,6 +17,8 @@ import { AdminAuditService } from './admin-audit.service';
 
 @Injectable()
 export class AdminDataService {
+  private readonly logger = new Logger(AdminDataService.name);
+
   constructor(
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,
@@ -564,24 +566,34 @@ export class AdminDataService {
       prepMax,
     };
 
-    restaurant.jsonParams = newParams;
-    const saved = await this.listingRepo.save(restaurant);
+    await this.dataSource.query(
+      `UPDATE listings SET json_params = ?, updated_at = NOW() WHERE id = ?`,
+      [JSON.stringify(newParams), id],
+    );
 
-    await this.auditService.log({
-      adminId: admin.id,
-      adminName: admin.name,
-      adminEmail: admin.email,
-      action: 'UPDATE_RESTAURANT_ETA',
-      targetType: 'RESTAURANT',
-      targetId: String(id),
-      description: `Cập nhật thời gian làm món quán "${restaurant.name}": ${prepMin} - ${prepMax} phút`,
-      beforeData,
-      afterData: { prepMin, prepMax },
-      ipAddress: ip,
-      userAgent: ua,
-    });
+    const adminId = Number(admin?.id || (admin as any)?.sub || 1);
+    const adminName = admin?.name || 'Admin';
+    const adminEmail = admin?.email || '';
 
-    return { success: true, data: { ...saved, prepMin, prepMax } };
+    try {
+      await this.auditService.log({
+        adminId,
+        adminName,
+        adminEmail,
+        action: 'UPDATE_RESTAURANT_ETA',
+        targetType: 'RESTAURANT',
+        targetId: String(id),
+        description: `Cập nhật thời gian làm món quán "${restaurant.name}": ${prepMin} - ${prepMax} phút`,
+        beforeData,
+        afterData: { prepMin, prepMax },
+        ipAddress: ip,
+        userAgent: ua,
+      });
+    } catch (e: any) {
+      this.logger.warn(`Could not log audit: ${e.message}`);
+    }
+
+    return { success: true, data: { ...restaurant, jsonParams: newParams, prepMin, prepMax } };
   }
 
   async updateRestaurantStatus(
@@ -597,24 +609,34 @@ export class AdminDataService {
     }
 
     const beforeStatus = restaurant.status;
-    restaurant.status = status;
-    const saved = await this.listingRepo.save(restaurant);
+    await this.dataSource.query(
+      `UPDATE listings SET status = ?, updated_at = NOW() WHERE id = ?`,
+      [status, id],
+    );
 
-    await this.auditService.log({
-      adminId: admin.id,
-      adminName: admin.name,
-      adminEmail: admin.email,
-      action: 'UPDATE_RESTAURANT_STATUS',
-      targetType: 'RESTAURANT',
-      targetId: String(id),
-      description: `Đổi trạng thái mở quán "${restaurant.name}" từ ${beforeStatus} sang ${status}`,
-      beforeData: { status: beforeStatus },
-      afterData: { status },
-      ipAddress: ip,
-      userAgent: ua,
-    });
+    const adminId = Number(admin?.id || (admin as any)?.sub || 1);
+    const adminName = admin?.name || 'Admin';
+    const adminEmail = admin?.email || '';
 
-    return { success: true, data: saved };
+    try {
+      await this.auditService.log({
+        adminId,
+        adminName,
+        adminEmail,
+        action: 'UPDATE_RESTAURANT_STATUS',
+        targetType: 'RESTAURANT',
+        targetId: String(id),
+        description: `Đổi trạng thái mở quán "${restaurant.name}" từ ${beforeStatus} sang ${status}`,
+        beforeData: { status: beforeStatus },
+        afterData: { status },
+        ipAddress: ip,
+        userAgent: ua,
+      });
+    } catch (e: any) {
+      this.logger.warn(`Could not log audit: ${e.message}`);
+    }
+
+    return { success: true, data: { ...restaurant, status } };
   }
 
   // ==========================================
@@ -755,24 +777,34 @@ export class AdminDataService {
     if (config.allowPayAtHotel !== undefined) newParams.allowPayAtHotel = config.allowPayAtHotel;
     if (config.starRating !== undefined) newParams.starRating = Number(config.starRating);
 
-    hotel.jsonParams = newParams;
-    const saved = await this.listingRepo.save(hotel);
+    await this.dataSource.query(
+      `UPDATE listings SET json_params = ?, updated_at = NOW() WHERE id = ?`,
+      [JSON.stringify(newParams), id],
+    );
 
-    await this.auditService.log({
-      adminId: admin.id,
-      adminName: admin.name,
-      adminEmail: admin.email,
-      action: 'UPDATE_HOTEL_CONFIG',
-      targetType: 'HOTEL',
-      targetId: String(id),
-      description: `Cập nhật cấu hình lưu trú "${hotel.name}": Hoa hồng ${config.commissionRate ?? 15}%, Check-in ${config.checkinTime ?? '14:00'}`,
-      beforeData,
-      afterData: newParams,
-      ipAddress: ip,
-      userAgent: ua,
-    });
+    const adminId = Number(admin?.id || (admin as any)?.sub || 1);
+    const adminName = admin?.name || 'Admin';
+    const adminEmail = admin?.email || '';
 
-    return { success: true, data: { ...saved, ...newParams } };
+    try {
+      await this.auditService.log({
+        adminId,
+        adminName,
+        adminEmail,
+        action: 'UPDATE_HOTEL_CONFIG',
+        targetType: 'HOTEL',
+        targetId: String(id),
+        description: `Cập nhật cấu hình lưu trú "${hotel.name}": Hoa hồng ${config.commissionRate ?? 15}%, Check-in ${config.checkinTime ?? '14:00'}`,
+        beforeData,
+        afterData: newParams,
+        ipAddress: ip,
+        userAgent: ua,
+      });
+    } catch (e: any) {
+      this.logger.warn(`Could not log audit: ${e.message}`);
+    }
+
+    return { success: true, data: { ...hotel, jsonParams: newParams, ...newParams } };
   }
 
   async updateHotelStatus(
@@ -788,24 +820,34 @@ export class AdminDataService {
     }
 
     const beforeStatus = hotel.status;
-    hotel.status = status;
-    const saved = await this.listingRepo.save(hotel);
+    await this.dataSource.query(
+      `UPDATE listings SET status = ?, updated_at = NOW() WHERE id = ?`,
+      [status, id],
+    );
 
-    await this.auditService.log({
-      adminId: admin.id,
-      adminName: admin.name,
-      adminEmail: admin.email,
-      action: 'UPDATE_HOTEL_STATUS',
-      targetType: 'HOTEL',
-      targetId: String(id),
-      description: `Đổi trạng thái nhận phòng cơ sở lưu trú "${hotel.name}" từ ${beforeStatus} sang ${status}`,
-      beforeData: { status: beforeStatus },
-      afterData: { status },
-      ipAddress: ip,
-      userAgent: ua,
-    });
+    const adminId = Number(admin?.id || (admin as any)?.sub || 1);
+    const adminName = admin?.name || 'Admin';
+    const adminEmail = admin?.email || '';
 
-    return { success: true, data: saved };
+    try {
+      await this.auditService.log({
+        adminId,
+        adminName,
+        adminEmail,
+        action: 'UPDATE_HOTEL_STATUS',
+        targetType: 'HOTEL',
+        targetId: String(id),
+        description: `Đổi trạng thái nhận phòng cơ sở lưu trú "${hotel.name}" từ ${beforeStatus} sang ${status}`,
+        beforeData: { status: beforeStatus },
+        afterData: { status },
+        ipAddress: ip,
+        userAgent: ua,
+      });
+    } catch (e: any) {
+      this.logger.warn(`Could not log audit: ${e.message}`);
+    }
+
+    return { success: true, data: { ...hotel, status } };
   }
 
   async getHotelRooms(hotelId: number) {
@@ -828,19 +870,27 @@ export class AdminDataService {
       [isAvailable ? 1 : 0, roomId],
     );
 
-    await this.auditService.log({
-      adminId: admin.id,
-      adminName: admin.name,
-      adminEmail: admin.email,
-      action: 'TOGGLE_HOTEL_ROOM_STATUS',
-      targetType: 'HOTEL_ROOM',
-      targetId: String(roomId),
-      description: `Đổi trạng thái loại phòng #${roomId}: ${isAvailable ? 'Còn phòng (Mở bán)' : 'Hết phòng (Tạm ngưng)'}`,
-      beforeData: {},
-      afterData: { isAvailable },
-      ipAddress: ip,
-      userAgent: ua,
-    });
+    const adminId = Number(admin?.id || (admin as any)?.sub || 1);
+    const adminName = admin?.name || 'Admin';
+    const adminEmail = admin?.email || '';
+
+    try {
+      await this.auditService.log({
+        adminId,
+        adminName,
+        adminEmail,
+        action: 'TOGGLE_HOTEL_ROOM_STATUS',
+        targetType: 'HOTEL_ROOM',
+        targetId: String(roomId),
+        description: `Đổi trạng thái loại phòng #${roomId}: ${isAvailable ? 'Còn phòng (Mở bán)' : 'Hết phòng (Tạm ngưng)'}`,
+        beforeData: {},
+        afterData: { isAvailable },
+        ipAddress: ip,
+        userAgent: ua,
+      });
+    } catch (e: any) {
+      this.logger.warn(`Could not log audit: ${e.message}`);
+    }
 
     return { success: true, data: { roomId, isAvailable } };
   }

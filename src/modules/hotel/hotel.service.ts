@@ -120,6 +120,7 @@ export class HotelService {
       LEFT JOIN wards w ON l.ward_id = w.id
       LEFT JOIN media m ON CAST(l.thumb AS UNSIGNED) = m.id 
       WHERE l.deleted_at IS NULL
+      ORDER BY l.id DESC
     `);
 
     let rawHotels = rawAll.filter((l: any) => {
@@ -134,7 +135,12 @@ export class HotelService {
         t === 'villa' ||
         n.includes('khách sạn') ||
         n.includes('hotel') ||
-        n.includes('homestay')
+        n.includes('homestay') ||
+        n.includes('villa') ||
+        n.includes('resort') ||
+        n.includes('nhà nghỉ') ||
+        n.includes('motel') ||
+        n.includes('chỗ nghỉ')
       );
     });
 
@@ -153,11 +159,12 @@ export class HotelService {
 
     // Batch fetch all rooms for these hotels in 1 single query
     const allRooms = hotelIds.length > 0 ? await this.hotelRoomRepo.find({
-      where: { isAvailable: true },
+      where: { listingId: In(hotelIds) },
     }) : [];
 
     const roomsByHotel = new Map<number, any[]>();
     for (const r of allRooms) {
+      if (r.isAvailable === false || (r as any).is_available === 0) continue;
       const list = roomsByHotel.get(Number(r.listingId)) || [];
       list.push(r);
       roomsByHotel.set(Number(r.listingId), list);
@@ -228,7 +235,7 @@ export class HotelService {
       FROM wards w
       LEFT JOIN listings l ON l.ward_id = w.id 
         AND l.deleted_at IS NULL
-        AND (l.type IN ('hotel', 'accommodation', 'luu-tru', 'homestay', 'resort', 'villa') OR l.name LIKE '%khách sạn%' OR l.name LIKE '%hotel%')
+        AND (l.type IN ('hotel', 'accommodation', 'luu-tru', 'homestay', 'resort', 'villa') OR l.name LIKE '%khách sạn%' OR l.name LIKE '%hotel%' OR l.name LIKE '%villa%' OR l.name LIKE '%homestay%' OR l.name LIKE '%resort%')
       WHERE w.province_id = 17
       GROUP BY w.id, w.name, w.type, w.iorder
       ORDER BY w.iorder ASC, w.id ASC
@@ -237,7 +244,7 @@ export class HotelService {
     const totalRaw = await this.listingRepo.query(`
       SELECT COUNT(l.id) AS total_count
       FROM listings l
-      WHERE (l.type IN ('hotel', 'accommodation', 'luu-tru', 'homestay', 'resort', 'villa') OR l.name LIKE '%khách sạn%' OR l.name LIKE '%hotel%')
+      WHERE (l.type IN ('hotel', 'accommodation', 'luu-tru', 'homestay', 'resort', 'villa') OR l.name LIKE '%khách sạn%' OR l.name LIKE '%hotel%' OR l.name LIKE '%villa%' OR l.name LIKE '%homestay%' OR l.name LIKE '%resort%')
         AND l.deleted_at IS NULL
     `);
     const totalCount = parseInt(totalRaw[0]?.total_count || '0', 10);
