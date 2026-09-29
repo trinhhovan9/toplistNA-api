@@ -140,7 +140,7 @@ export class FcmService implements OnModuleInit {
       title.includes('đặt phòng mới');
 
     const channelId = isOrderAlert
-      ? 'toplistna_order_channel_id'
+      ? 'toplistna_order_channel_v2'
       : 'toplistna_notifications_channel_id';
 
 function stripEmojis(str: string): string {
@@ -175,7 +175,10 @@ function stripEmojis(str: string): string {
           sound: isCustomSound ? 'chuong' : 'default',
           priority: 'max',
           defaultSound: !isCustomSound,
-          defaultVibrateTimings: true,
+          defaultVibrateTimings: !isCustomSound,
+          ...(isCustomSound
+            ? { vibrateTimingsMillis: [0, 1000, 400, 1000, 400, 1000, 400, 1200] }
+            : {}),
           visibility: 'public',
         },
       },

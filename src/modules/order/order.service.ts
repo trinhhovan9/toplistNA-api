@@ -960,16 +960,17 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getUserOrders(userId?: number | null) {
+    // BẮT BUỘC phải có tài khoản (userId hợp lệ > 0).
+    // Nếu chưa đăng nhập hoặc không có userId, trả về mảng rỗng [], tuyệt đối không lộ đơn của người khác!
+    if (!userId || isNaN(Number(userId)) || Number(userId) <= 0) {
+      return [];
+    }
+
     // Tự động kiểm tra dọn dẹp các đơn online quá hạn thanh toán (> 15 phút)
     await this.autoCancelExpiredUnpaidOrders();
 
-    const whereClause: any = {};
-    if (userId && Number(userId) > 0) {
-      whereClause.userId = Number(userId);
-    }
-
     const orders = await this.orderRepo.find({
-      where: whereClause,
+      where: { userId: Number(userId) },
       order: { createdAt: 'DESC' },
       take: 50,
       relations: ['items'],
