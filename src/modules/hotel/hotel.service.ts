@@ -726,6 +726,10 @@ export class HotelService {
    * Đặt phòng khách sạn (Snapshot giá & Ngăn ngừa Overbooking)
    */
   async createBooking(userId: number | null, dto: CreateHotelBookingDto) {
+    if (!userId || isNaN(Number(userId)) || Number(userId) <= 0) {
+      throw new BadRequestException('Vui lòng đăng nhập tài khoản để thực hiện đặt phòng.');
+    }
+
     const hotel = await this.listingRepo.findOne({ where: { id: dto.hotelId } });
     if (!hotel) throw new NotFoundException('Khách sạn không tồn tại');
 
@@ -816,7 +820,7 @@ export class HotelService {
     const reservation = this.reservationRepo.create({
       bookingCode,
       listingId: dto.hotelId,
-      userId: userId ? Number(userId) : null as any,
+      userId: Number(userId),
       customerName: dto.customerName,
       phoneNumber: dto.phoneNumber,
       email: dto.email || '',

@@ -158,6 +158,10 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
     recipientPhoneInput?: string,
     serviceFeeInput?: number,
   ) {
+    if (!userId || isNaN(Number(userId)) || Number(userId) <= 0) {
+      throw new BadRequestException('Vui lòng đăng nhập tài khoản để thực hiện đặt món.');
+    }
+
     let originalSubtotal = 0;
     let promotionDiscount = 0;
     let promoStoreDiscount = 0;
@@ -533,15 +537,11 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
     const financialBreakdown = JSON.stringify(financialSnapshot);
 
     // Tìm user thật trong database
-    let realUser: User | null = null;
-    if (userId && Number(userId) > 0) {
-      realUser = await this.userRepo.findOne({ where: { id: Number(userId) } });
-    }
+    const realUser = await this.userRepo.findOne({ where: { id: Number(userId) } });
     if (!realUser) {
-      const users = await this.userRepo.find({ order: { id: 'DESC' }, take: 1 });
-      realUser = users[0] || null;
+      throw new BadRequestException('Tài khoản không tồn tại hoặc đã bị vô hiệu hóa. Vui lòng đăng nhập lại.');
     }
-    const finalUserId = realUser ? Number(realUser.id) : (userId || 1);
+    const finalUserId = Number(realUser.id);
 
     // Trích xuất thông tin người nhận từ chuỗi deliveryAddress nếu có
     let extractedName = '';
