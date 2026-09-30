@@ -254,6 +254,13 @@ export class AdminDataController {
     return this.dataService.toggleFlashSale(id, req.admin || req.user, ip, ua);
   }
 
+  @Put('flash-sales/:id/extend')
+  async extendFlashSale(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const ip = req.ip || req.connection?.remoteAddress || '';
+    const ua = req.headers['user-agent'] || '';
+    return this.dataService.extendFlashSale(id, req.admin || req.user, ip, ua);
+  }
+
   @Delete('flash-sales/:id')
   async deleteFlashSale(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     const ip = req.ip || req.connection?.remoteAddress || '';

@@ -1501,6 +1501,13 @@ export class AdminDataService {
     const oldStatus = promo.status;
     const newStatus = oldStatus === 'active' ? 'inactive' : 'active';
     promo.status = newStatus;
+
+    // Nếu kích hoạt chiến dịch đã hết hạn, tự động gia hạn 24 giờ tiếp theo để chiến dịch chạy được ngay
+    if (newStatus === 'active' && promo.endAt && new Date(promo.endAt).getTime() < Date.now()) {
+      promo.startAt = new Date();
+      promo.endAt = new Date(Date.now() + 24 * 3600 * 1000);
+    }
+
     await this.promotionRepo.save(promo);
 
     await this.auditService.log({
@@ -1512,7 +1519,37 @@ export class AdminDataService {
       targetId: String(id),
       description: `Đổi trạng thái Flash Sale "${promo.name}" thành ${newStatus}`,
       beforeData: { status: oldStatus },
-      afterData: { status: newStatus },
+      afterData: { status: newStatus, startAt: promo.startAt, endAt: promo.endAt },
+      ipAddress: ip,
+      userAgent: ua,
+    });
+
+    return { success: true, data: promo };
+  }
+
+  async extendFlashSale(
+    id: number,
+    admin: { id: number; name: string; email: string },
+    ip: string,
+    ua: string,
+  ) {
+    const promo = await this.promotionRepo.findOne({ where: { id } });
+    if (!promo) throw new NotFoundException('Chiến dịch không tồn tại');
+    promo.startAt = new Date();
+    promo.endAt = new Date(Date.now() + 24 * 3600 * 1000);
+    promo.status = 'active';
+    await this.promotionRepo.save(promo);
+
+    await this.auditService.log({
+      adminId: admin.id,
+      adminName: admin.name,
+      adminEmail: admin.email,
+      action: 'UPDATE',
+      targetType: 'FLASH_SALE',
+      targetId: String(id),
+      description: `Gia hạn 24h chiến dịch Flash Sale "${promo.name}"`,
+      beforeData: null,
+      afterData: { status: 'active', startAt: promo.startAt, endAt: promo.endAt },
       ipAddress: ip,
       userAgent: ua,
     });
