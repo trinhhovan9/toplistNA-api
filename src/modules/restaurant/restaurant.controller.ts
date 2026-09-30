@@ -158,6 +158,32 @@ export class RestaurantController {
   }
 
   /**
+   * POST /api/v1/restaurants/merchant/:id/settings
+   * Cập nhật cấu hình quán (giờ mở - đóng, thời gian chuẩn bị món, SĐT, địa chỉ)
+   */
+  @Post('merchant/:id/settings')
+  @ApiOperation({ summary: 'Cập nhật cấu hình vận hành quán ăn' })
+  async updateSettings(
+    @Param('id') id: string,
+    @Body() body: {
+      open_time?: string;
+      close_time?: string;
+      opening_hours?: Array<{ day: string; open: string; close: string }>;
+      prep_min?: number;
+      prep_max?: number;
+      phone?: string;
+      address?: string;
+    },
+    @Query('userId') queryUserId?: string,
+    @Headers('x-user-id') headerUserId?: string,
+  ) {
+    const rawId = queryUserId || headerUserId;
+    const userId = parseInt(rawId || '0', 10);
+    const result = await this.restaurantService.updateStoreSettings(userId, parseInt(id, 10), body);
+    return { success: true, data: result, message: 'Đã cập nhật cài đặt quán thành công' };
+  }
+
+  /**
    * GET /api/v1/restaurants/nearby?lat=18.67&lng=105.68&filter=Gần nhất&page=1
    */
   @Get('nearby')

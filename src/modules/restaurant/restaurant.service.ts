@@ -544,7 +544,14 @@ export class RestaurantService {
         } catch (_) { }
       }
 
-      const storeStatus = computeStoreOpenStatus(s.jsonParams, s.status);
+      let params: any = s.jsonParams || {};
+      if (typeof params === 'string') {
+        try { params = JSON.parse(params); } catch (_) { params = {}; }
+      }
+      if (!params || typeof params !== 'object') {
+        params = {};
+      }
+      const storeStatus = computeStoreOpenStatus(params, s.status);
 
       return {
         id: Number(s.id),
@@ -558,6 +565,9 @@ export class RestaurantService {
         open_status_text: storeStatus.openStatusText,
         open_time: storeStatus.openTime,
         close_time: storeStatus.closeTime,
+        prep_min: params.prepMin ?? 10,
+        prep_max: params.prepMax ?? 20,
+        opening_hours: params.opening_hours ?? null,
         image: mainImg,
       };
     });
@@ -741,6 +751,82 @@ export class RestaurantService {
     listing.jsonParams = params;
     await this.listingRepo.save(listing);
     return { success: true, is_open: isOpen, listing_id: listingId };
+  }
+
+  /**
+   * Cập nhật cấu hình vận hành quán (giờ mở - đóng, thời gian chuẩn bị món, SĐT, địa chỉ)
+   */
+  async updateStoreSettings(
+    userId: number,
+    listingId: number,
+    data: {
+      open_time?: string;
+      close_time?: string;
+      opening_hours?: Array<{ day: string; open: string; close: string }>;
+      prep_min?: number;
+      prep_max?: number;
+      phone?: string;
+      address?: string;
+    },
+  ) {
+    const listing = await this.verifyMerchantPermission(userId, listingId);
+    let params: any = listing.jsonParams || {};
+    if (typeof params === 'string') {
+      try { params = JSON.parse(params); } catch (_) { params = {}; }
+    }
+    if (!params || typeof params !== 'object') {
+      params = {};
+    }
+
+    if (data.open_time && data.close_time) {
+      const openTime = data.open_time;
+      const closeTime = data.close_time;
+      params.open_time = openTime;
+      params.close_time = closeTime;
+      const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+      params.opening_hours = days.map((day) => ({
+        day,
+        open: openTime.includes(':') && openTime.split(':').length === 2 ? `${openTime}:00` : openTime,
+        close: closeTime.includes(':') && closeTime.split(':').length === 2 ? `${closeTime}:00` : closeTime,
+      }));
+    } else if (data.opening_hours && Array.isArray(data.opening_hours)) {
+      params.opening_hours = data.opening_hours;
+      if (data.opening_hours.length > 0) {
+        params.open_time = data.opening_hours[0].open;
+        params.close_time = data.opening_hours[0].close;
+      }
+    }
+
+    if (data.prep_min !== undefined) {
+      params.prepMin = Number(data.prep_min);
+    }
+    if (data.prep_max !== undefined) {
+      params.prepMax = Number(data.prep_max);
+    }
+
+    if (data.phone) {
+      listing.phone = data.phone;
+    }
+    if (data.address) {
+      listing.address = data.address;
+    }
+
+    listing.jsonParams = params;
+    await this.listingRepo.save(listing);
+
+    const storeStatus = computeStoreOpenStatus(params, listing.status);
+
+    return {
+      success: true,
+      listing_id: listingId,
+      is_open: storeStatus.isOpen,
+      open_status_text: storeStatus.openStatusText,
+      open_time: storeStatus.openTime,
+      close_time: storeStatus.closeTime,
+      prep_min: params.prepMin ?? 10,
+      prep_max: params.prepMax ?? 20,
+      opening_hours: params.opening_hours,
+    };
   }
 
   /**
