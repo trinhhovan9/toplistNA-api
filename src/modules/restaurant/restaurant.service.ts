@@ -9,6 +9,7 @@ import { OrderItem } from '../../entities/order-item.entity';
 import { User } from '../../entities/user.entity';
 import { DeliveryEtaService } from '../delivery-eta/delivery-eta.service';
 import { getFoodImageByDishName } from '../../common/utils/food-image.util';
+import { computeStoreOpenStatus } from '../../common/utils/opening-hours.util';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -116,6 +117,8 @@ export class RestaurantService {
         'l.longitude AS longitude',
         'l.is_featured AS is_featured',
         'l.description AS description',
+        'l.status AS status',
+        'l.json_params AS json_params',
         'm.path AS media_path',
       ])
       .where('l.deleted_at IS NULL')
@@ -318,6 +321,8 @@ export class RestaurantService {
           deliveryTime: '17-23 phút',
         };
 
+        const storeStatus = computeStoreOpenStatus(l.json_params, l.status);
+
         return {
           id: l.id,
           name: l.name,
@@ -336,6 +341,10 @@ export class RestaurantService {
           delivery_time_max: eta.maxMinutes,
           shipping_fee: l.shippingFee,
           is_featured: l.is_featured == 1 || l.is_featured == true,
+          is_open: storeStatus.isOpen,
+          open_status_text: storeStatus.openStatusText,
+          open_time: storeStatus.openTime,
+          close_time: storeStatus.closeTime,
           brief: l.description ? l.description.substring(0, 100) : null,
           best_seller: bestSeller,
         };
@@ -471,6 +480,8 @@ export class RestaurantService {
       });
     }
 
+    const storeStatus = computeStoreOpenStatus(listing.jsonParams, listing.status);
+
     return {
       listing: {
         id: listing.id,
@@ -483,6 +494,10 @@ export class RestaurantService {
         price_max: listing.priceMax,
         latitude: listing.latitude ? Number(listing.latitude) : null,
         longitude: listing.longitude ? Number(listing.longitude) : null,
+        is_open: storeStatus.isOpen,
+        open_status_text: storeStatus.openStatusText,
+        open_time: storeStatus.openTime,
+        close_time: storeStatus.closeTime,
         brief: listing.description ? listing.description.substring(0, 100) : null,
       },
       vouchers: applicableVouchers.map((v) => ({
@@ -529,16 +544,7 @@ export class RestaurantService {
         } catch (_) { }
       }
 
-      let isOpen = true;
-      if (s.jsonParams) {
-        let p: any = s.jsonParams;
-        if (typeof p === 'string') {
-          try { p = JSON.parse(p); } catch (_) { }
-        }
-        if (p && typeof p === 'object' && 'is_open' in p) {
-          isOpen = !!p.is_open;
-        }
-      }
+      const storeStatus = computeStoreOpenStatus(s.jsonParams, s.status);
 
       return {
         id: Number(s.id),
@@ -548,7 +554,10 @@ export class RestaurantService {
         category: s.type === 'cafe' ? 'Cà phê & Đồ uống' : 'Ẩm thực & Nhà hàng',
         phone: s.phone || '0988 123 456',
         rating: s.ratingAvg ? Number(s.ratingAvg) : 4.9,
-        is_open: isOpen,
+        is_open: storeStatus.isOpen,
+        open_status_text: storeStatus.openStatusText,
+        open_time: storeStatus.openTime,
+        close_time: storeStatus.closeTime,
         image: mainImg,
       };
     });

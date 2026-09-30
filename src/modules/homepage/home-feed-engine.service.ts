@@ -10,6 +10,7 @@ import { OrderItem } from '../../entities/order-item.entity';
 import { PromotionService } from '../promotion/promotion.service';
 import { getFoodImageByDishName } from '../../common/utils/food-image.util';
 import { formatImageUrl } from '../restaurant/restaurant.service';
+import { computeStoreOpenStatus } from '../../common/utils/opening-hours.util';
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371; // Earth radius in km
@@ -80,6 +81,7 @@ export class HomeFeedEngineService {
       const storeImage = store.media_path
         ? `https://toplistnghean.vn/storage/${store.media_path}`
         : 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=500&q=80';
+      const storeStatus = computeStoreOpenStatus(store.json_params, store.status);
       storeMap.set(Number(store.id), {
         ...store,
         id: Number(store.id),
@@ -87,6 +89,10 @@ export class HomeFeedEngineService {
         ratingCount: store.rating_count,
         resolvedImage: storeImage,
         address: store.address || 'TP Vinh, Nghệ An',
+        isOpen: storeStatus.isOpen,
+        openStatusText: storeStatus.openStatusText,
+        openTime: storeStatus.openTime,
+        closeTime: storeStatus.closeTime,
       });
     }
     return storeMap;
@@ -835,6 +841,10 @@ export class HomeFeedEngineService {
       badge: item.discountPercent > 0 ? `-${item.discountPercent}%` : item.isFlashSale ? 'FLASH SALE' : 'HOT',
       tag: item.isFlashSale ? 'Giờ vàng' : 'Bán chạy',
       is_flash_sale: Boolean(item.isFlashSale),
+      is_open: item.store?.isOpen ?? item.isOpen ?? true,
+      open_status_text: item.store?.openStatusText ?? item.openStatusText ?? 'Đang mở cửa',
+      open_time: item.store?.openTime ?? item.openTime ?? null,
+      close_time: item.store?.closeTime ?? item.closeTime ?? null,
       feed_session_id: feedSessionId,
       collection_key: collectionKey,
       position: position,

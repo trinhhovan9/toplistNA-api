@@ -15,6 +15,7 @@ import { FcmService } from '../notification/fcm.service';
 import { PromotionService } from '../promotion/promotion.service';
 import { NotificationService } from '../notification/notification.service';
 import { FoodFinancialSnapshot } from './financial-contract.interface';
+import { computeStoreOpenStatus } from '../../common/utils/opening-hours.util';
 
 function generateOrderCode(): string {
   const num = Math.floor(100000 + Math.random() * 900000);
@@ -204,6 +205,19 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
     // 2. Tra cứu Promotion Engine cho các món (Flash Sale / Giảm giá món)
     const dishIds = preliminaryItems.map((pi) => pi.menuItemId).filter((id) => id > 0);
     const promoMap = await this.promotionService.getPromotionsForDishes(dishIds);
+
+    // 2.1. Kiểm tra trạng thái đóng/mở cửa của quán ăn
+    if (finalListingId && finalListingId > 0) {
+      const storeListing = await this.listingRepo.findOne({ where: { id: finalListingId } });
+      if (storeListing) {
+        const storeStatus = computeStoreOpenStatus(storeListing.jsonParams, storeListing.status);
+        if (!storeStatus.isOpen) {
+          throw new BadRequestException(
+            `Quán "${storeListing.name}" hiện đang đóng cửa (${storeStatus.openStatusText}). Vui lòng quay lại vào giờ mở cửa!`,
+          );
+        }
+      }
+    }
 
     const itemsData: Array<{
       menuItemId: number;

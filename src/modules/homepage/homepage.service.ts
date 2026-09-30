@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, IsNull, LessThan, DataSource } from 'typeorm';
 import { Listing } from '../../entities/listing.entity';
 import { HotelRoom } from '../../entities/hotel-room.entity';
+import { computeStoreOpenStatus } from '../../common/utils/opening-hours.util';
 
 // Công thức Haversine tính khoảng cách (km) giữa 2 tọa độ
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -712,6 +713,8 @@ export class HomepageService {
           l.longitude,
           l.rating_avg,
           l.rating_count,
+          l.status as restaurant_status,
+          l.json_params as restaurant_json_params,
           l.thumb as store_thumb,
           COALESCE(oi.sold_qty, 0) as real_sold_count,
           GROUP_CONCAT(DISTINCT t.name SEPARATOR ', ') as tags_str
@@ -725,10 +728,9 @@ export class HomepageService {
         LEFT JOIN taggables tg ON l.id = tg.taggable_id AND tg.taggable_type = 'listings'
         LEFT JOIN tags t ON t.id = tg.tag_id AND (${tagConditions})
         WHERE mi.is_available = 1
-          AND (${catConditions} OR ${nameConditions} OR t.id IS NOT NULL)
         GROUP BY 
           mi.id, mi.name, mi.price, mi.original_price, mi.image_url, mi.category_name,
-          l.id, l.name, l.address, l.latitude, l.longitude, l.rating_avg, l.rating_count, l.thumb, oi.sold_qty
+          l.id, l.name, l.address, l.latitude, l.longitude, l.rating_avg, l.rating_count, l.status, l.json_params, l.thumb, oi.sold_qty
         ORDER BY l.rating_avg DESC, mi.id DESC
         LIMIT 40
       `;
@@ -761,6 +763,7 @@ export class HomepageService {
           : null;
         const realRatingCount = Number(r.rating_count) || 0;
         const realSold = Number(r.real_sold_count) || 0;
+        const storeStatus = computeStoreOpenStatus(r.restaurant_json_params, r.restaurant_status);
 
         return {
           id: Number(r.id),
@@ -779,6 +782,10 @@ export class HomepageService {
           delivery_time: deliveryTimeStr,
           distance: distStr,
           distance_km: Number(distKm.toFixed(1)),
+          is_open: storeStatus.isOpen,
+          open_status_text: storeStatus.openStatusText,
+          open_time: storeStatus.openTime,
+          close_time: storeStatus.closeTime,
           badge: currentConfig.badge,
           tag: r.category_name || 'Món ngon',
           image: resolvedImage,
