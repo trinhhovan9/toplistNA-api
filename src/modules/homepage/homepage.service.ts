@@ -555,6 +555,200 @@ export class HomepageService {
     };
   }
 
+  /**
+   * Thuật toán gợi ý thực đơn theo buổi (Bữa sáng, Bữa trưa, Xế chiều, Bữa tối)
+   * Phân tích đa tiêu chí: Tags quán ăn (ăn vặt vinh, quán cơm, quán nhậu...), Danh mục món, và Từ khóa món
+   */
+  async getMealSuggestions(mealInput: string = 'breakfast', userLat: number = 18.6732, userLng: number = 105.6881, limit: number = 15) {
+    const meal = (mealInput || 'breakfast').toLowerCase();
+
+    const configs: Record<string, {
+      title: string;
+      subtitle: string;
+      badge: string;
+      headerColor: string;
+      gradientColors: [string, string];
+      tags: string[];
+      cats: string[];
+      dishKeywords: string[];
+      fallbackImages: string[];
+    }> = {
+      breakfast: {
+        title: 'Thực Đơn Bữa Sáng',
+        subtitle: 'Điểm tâm nóng hổi, Bánh mướt & Cà phê sáng thơm ngon',
+        badge: 'SÁNG NĂNG LƯỢNG',
+        headerColor: '#FF7A00',
+        gradientColors: ['#FF7A00', '#FFA940'],
+        tags: ['quán bún', 'quán phở', 'quán ăn sáng', 'ăn sáng', 'bữa sáng', 'điểm tâm', 'cà phê', 'bánh mướt'],
+        cats: ['Bánh mướt', 'Phở truyền thống', 'Bún ngon', 'Cà phê đặc sản', 'Ăn kèm'],
+        dishKeywords: ['bánh mướt', 'bánh cuốn', 'bánh ướt', 'phở', 'bún', 'bánh mì', 'cháo', 'xôi', 'cà phê', 'bạc xỉu', 'bacxiu', 'hủ tiếu', 'súp lươn', 'miến lươn', 'trứng ốp la'],
+        fallbackImages: [
+          'https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?auto=format&fit=crop&w=500&q=80',
+          'https://images.unsplash.com/photo-1541167760496-1628856ab772?auto=format&fit=crop&w=500&q=80',
+          'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=500&q=80',
+        ],
+      },
+      lunch: {
+        title: 'Thực Đơn Bữa Trưa',
+        subtitle: 'Cơm văn phòng, Cơm tấm & Món ngon chắc dạ',
+        badge: 'TRƯA TRÒN VỊ',
+        headerColor: '#FF3E2D',
+        gradientColors: ['#FF3E2D', '#FF6F59'],
+        tags: ['quán cơm', 'cơm ngon', 'cơm trưa', 'món chính', 'quán cơm bình dân', 'nhà hàng', 'quán chay'],
+        cats: ['Cơm ngon', 'Món chính', 'Đặc sản Nghệ An'],
+        dishKeywords: ['cơm', 'cơm tấm', 'cơm gà', 'cơm rang', 'bún đậu', 'bún chả', 'sườn', 'thịt kho', 'canh', 'thố chảo', 'cá kho'],
+        fallbackImages: [
+          'https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=500&q=80',
+          'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=500&q=80',
+          'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?auto=format&fit=crop&w=500&q=80',
+        ],
+      },
+      afternoon: {
+        title: 'Thực Đơn Xế Chiều',
+        subtitle: 'Trà sữa giải nhiệt, Ăn vặt & Bánh ngọt xế chiều',
+        badge: 'ĂN VẶT & TRÀ SỮA',
+        headerColor: '#E040FB',
+        gradientColors: ['#E040FB', '#FF5252'],
+        tags: ['quán ăn vặt', 'ăn vặt', 'ăn vặt vinh', 'trà sữa', 'đồ uống', 'bánh gato', 'sinh tố', 'chè'],
+        cats: ['Ốc & Ăn vặt', 'Trà sữa Signature', 'Trà trái cây', 'Bánh ngọt', 'Đồ uống hiện đại'],
+        dishKeywords: ['trà sữa', 'trà đào', 'trà chanh', 'trà tắc', 'trà trái cây', 'trà hoa quả', 'matcha', 'ốc', 'bánh tráng', 'nem chua', 'khoai lắc', 'bánh ngọt', 'chè', 'kem', 'ăn vặt', 'xúc xích', 'tiramisu', 'bánh gato'],
+        fallbackImages: [
+          'https://images.unsplash.com/photo-1558857563-b371033873b8?auto=format&fit=crop&w=500&q=80',
+          'https://images.unsplash.com/photo-1579954115545-a95591f28bfc?auto=format&fit=crop&w=500&q=80',
+          'https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=500&q=80',
+        ],
+      },
+      dinner: {
+        title: 'Thực Đơn Bữa Tối',
+        subtitle: 'Lẩu nướng quây quần, Hải sản tươi ngon & Món đậm đà',
+        badge: 'TỐI ĐẬM ĐÀ',
+        headerColor: '#4A00E0',
+        gradientColors: ['#4A00E0', '#8E2DE2'],
+        tags: ['quán nhậu', 'nhà hàng hải sản', 'quán hải sản', 'quán bia', 'quán lẩu', 'quán beer', 'quán nhậu bình dân', 'quán nhậu sinh viên', 'hải sản cửa lò', 'gần biển'],
+        cats: ['Lẩu & Hải sản', 'Món chính', 'Đặc sản Nghệ An'],
+        dishKeywords: ['lẩu', 'nướng', 'hải sản', 'mì cay', 'gà rán', 'bia', 'ốc', 'thịt nướng', 'mực', 'tôm', 'cua', 'hàu', 'bò nhúng', 'cháo đêm'],
+        fallbackImages: [
+          'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=500&q=80',
+          'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=500&q=80',
+          'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=500&q=80',
+        ],
+      },
+    };
+
+    const currentConfig = configs[meal] || configs['breakfast'];
+
+    try {
+      const tagConditions = currentConfig.tags.map(() => 't.name LIKE ?').join(' OR ');
+      const catConditions = currentConfig.cats.map(() => 'mi.category_name = ?').join(' OR ');
+      const nameConditions = currentConfig.dishKeywords.map(() => 'mi.name LIKE ?').join(' OR ');
+
+      const params = [
+        ...currentConfig.tags.map((t) => '%' + t + '%'),
+        ...currentConfig.cats,
+        ...currentConfig.dishKeywords.map((n) => '%' + n + '%'),
+      ];
+
+      const sql = `
+        SELECT 
+          mi.id,
+          mi.name as dish_name,
+          mi.price,
+          mi.original_price,
+          mi.image_url,
+          mi.category_name,
+          l.id as restaurant_id,
+          l.name as restaurant_name,
+          l.address as restaurant_address,
+          l.latitude,
+          l.longitude,
+          l.rating_avg,
+          l.rating_count,
+          l.thumb as store_thumb,
+          GROUP_CONCAT(DISTINCT t.name SEPARATOR ', ') as tags_str
+        FROM menu_items mi
+        JOIN listings l ON mi.listing_id = l.id
+        LEFT JOIN taggables tg ON l.id = tg.taggable_id AND tg.taggable_type = 'listings'
+        LEFT JOIN tags t ON t.id = tg.tag_id AND (${tagConditions})
+        WHERE mi.is_available = 1
+          AND (${catConditions} OR ${nameConditions} OR t.id IS NOT NULL)
+        GROUP BY 
+          mi.id, mi.name, mi.price, mi.original_price, mi.image_url, mi.category_name,
+          l.id, l.name, l.address, l.latitude, l.longitude, l.rating_avg, l.rating_count, l.thumb
+        ORDER BY l.rating_avg DESC, mi.id DESC
+        LIMIT 40
+      `;
+
+      const rows: any[] = await this.dataSource.query(sql, params);
+
+      const items = rows.slice(0, limit).map((r, idx) => {
+        const dishPrice = Number(r.price) || 35000;
+        const origPrice = r.original_price ? Number(r.original_price) : 0;
+        const hasDiscount = origPrice > dishPrice;
+        const discountPct = hasDiscount ? Math.round(((origPrice - dishPrice) / origPrice) * 100) : 0;
+
+        const rLat = r.latitude ? Number(r.latitude) : 18.6732;
+        const rLng = r.longitude ? Number(r.longitude) : 105.6881;
+        const distKm = haversineKm(userLat, userLng, rLat, rLng);
+        const distStr = `${distKm.toFixed(1)} km`;
+        const deliveryMins = Math.max(12, Math.min(45, Math.round(10 + distKm * 4)));
+        const deliveryTimeStr = `${deliveryMins}-${deliveryMins + 6} phút`;
+
+        // Image resolving
+        let resolvedImage = r.image_url;
+        if (!resolvedImage || resolvedImage.trim().length === 0) {
+          resolvedImage = currentConfig.fallbackImages[idx % currentConfig.fallbackImages.length];
+        } else if (resolvedImage.startsWith('/uploads/')) {
+          resolvedImage = `https://toplistnghean.vn${resolvedImage}`;
+        }
+
+        return {
+          id: Number(r.id),
+          dish_name: r.dish_name,
+          name: r.dish_name,
+          price: dishPrice,
+          original_price: hasDiscount ? origPrice : null,
+          discount: hasDiscount ? `-${discountPct}%` : null,
+          category_name: r.category_name,
+          restaurant_id: Number(r.restaurant_id),
+          restaurant_name: r.restaurant_name,
+          restaurant_address: r.restaurant_address,
+          rating: r.rating_avg ? Number(Number(r.rating_avg).toFixed(1)) : 4.8,
+          rating_count: r.rating_count || 120,
+          sold_count: `${(Number(r.id) * 17 % 250) + 80}+ đã bán`,
+          delivery_time: deliveryTimeStr,
+          distance: distStr,
+          distance_km: Number(distKm.toFixed(1)),
+          badge: currentConfig.badge,
+          tag: 'Freeship 0Đ',
+          image: resolvedImage,
+          tags: r.tags_str ? r.tags_str.split(',').map((s: string) => s.trim()) : [],
+        };
+      });
+
+      return {
+        meal,
+        title: currentConfig.title,
+        subtitle: currentConfig.subtitle,
+        badge: currentConfig.badge,
+        header_color: currentConfig.headerColor,
+        gradient_colors: currentConfig.gradientColors,
+        total: items.length,
+        items,
+      };
+    } catch (err: any) {
+      return {
+        meal,
+        title: currentConfig.title,
+        subtitle: currentConfig.subtitle,
+        badge: currentConfig.badge,
+        header_color: currentConfig.headerColor,
+        gradient_colors: currentConfig.gradientColors,
+        total: 0,
+        items: [],
+      };
+    }
+  }
+
   private formatListing(l: any) {
     return {
       id: l.id,

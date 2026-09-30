@@ -127,6 +127,31 @@ export class HomepageController {
   }
 
   /**
+   * GET /api/v1/homepage/meal-suggestions?meal=breakfast&lat=18.6796&lng=105.6813&limit=15
+   * Thuật toán gợi ý thực đơn theo buổi dựa trên tags, danh mục và từ khóa món
+   */
+  @Get('meal-suggestions')
+  @ApiOperation({ summary: 'Gợi ý món ăn thông minh theo bữa dựa trên tags, danh mục và từ khóa' })
+  @ApiQuery({ name: 'meal', required: false, enum: ['breakfast', 'lunch', 'afternoon', 'dinner'] })
+  @ApiQuery({ name: 'lat', required: false, type: Number })
+  @ApiQuery({ name: 'lng', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getMealSuggestions(
+    @Query('meal') meal?: string,
+    @Query('lat') lat?: string,
+    @Query('lng') lng?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const data = await this.homepageService.getMealSuggestions(
+      meal || 'breakfast',
+      lat ? parseFloat(lat) : undefined,
+      lng ? parseFloat(lng) : undefined,
+      limit ? parseInt(limit) : 15,
+    );
+    return { success: true, data };
+  }
+
+  /**
    * GET /api/v1/homepage?lat=18.6796&lng=105.6813 (Legacy support)
    */
   @Get()

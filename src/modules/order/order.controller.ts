@@ -46,6 +46,7 @@ function extractUserIdFromRequest(req: any): number | null {
 export class CheckoutDto {
   @IsOptional() user_id?: number;
   @IsOptional() userId?: number;
+  @IsOptional() @IsString() username?: string;
   @IsOptional() listing_id?: number;
   @IsOptional() @IsString() delivery_address?: string;
   @IsOptional() @IsString() recipient_name?: string;
@@ -89,6 +90,7 @@ export class OrderController {
       dto.recipient_name,
       dto.recipient_phone,
       dto.service_fee,
+      dto.username,
     );
     return { success: true, data, message: 'Đặt đơn hàng thành công' };
   }
@@ -100,10 +102,11 @@ export class OrderController {
     @Request() req,
     @Query('userId') queryUserId?: string,
     @Query('phone') queryPhone?: string,
+    @Query('username') queryUsername?: string,
   ) {
     const rawId = queryUserId || req.user?.id || extractUserIdFromRequest(req);
     const userId = rawId && !isNaN(Number(rawId)) && Number(rawId) > 0 ? Number(rawId) : null;
-    const data = await this.orderService.getUserOrders(userId, queryPhone);
+    const data = await this.orderService.getUserOrders(userId, queryPhone, queryUsername);
     return { success: true, data };
   }
 

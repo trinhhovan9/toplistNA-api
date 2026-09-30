@@ -157,6 +157,7 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
     recipientNameInput?: string,
     recipientPhoneInput?: string,
     serviceFeeInput?: number,
+    usernameInput?: string,
   ) {
     let originalSubtotal = 0;
     let promotionDiscount = 0;
@@ -558,6 +559,11 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
 
     if (resolvedUserId) {
       realUser = await this.userRepo.findOne({ where: { id: resolvedUserId } });
+    }
+
+    if (!realUser && usernameInput && usernameInput.trim().length > 0) {
+      realUser = await this.userRepo.findOne({ where: { username: usernameInput.trim() } });
+      if (realUser) resolvedUserId = Number(realUser.id);
     }
 
     if (!realUser && effectivePhoneDigits.length >= 9) {
@@ -1012,12 +1018,19 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async getUserOrders(userId?: number | null, phone?: string | null) {
+  async getUserOrders(userId?: number | null, phone?: string | null, username?: string | null) {
+    let effectiveUserId = userId && !isNaN(Number(userId)) && Number(userId) > 0 ? Number(userId) : null;
+
+    if (!effectiveUserId && username && username.trim().length > 0) {
+      const u = await this.userRepo.findOne({ where: { username: username.trim() } });
+      if (u) effectiveUserId = Number(u.id);
+    }
+
     const cleanPhone = phone ? phone.replace(/[^0-9]/g, '') : null;
 
     // BẮT BUỘC phải có tài khoản (userId hợp lệ > 0) hoặc số điện thoại người dùng.
-    // Nếu cả 2 đều không có => Khách vãng lai chưa đăng nhập, trả về [] để bảo mật đơn hàng
-    if ((!userId || isNaN(Number(userId)) || Number(userId) <= 0) && (!cleanPhone || cleanPhone.length < 9)) {
+    // Nếu không có bất kỳ thông tin nhận diện nào => Khách vãng lai chưa đăng nhập, trả về [] để bảo mật đơn hàng
+    if ((!effectiveUserId || effectiveUserId <= 0) && (!cleanPhone || cleanPhone.length < 9)) {
       return [];
     }
 
@@ -1025,13 +1038,13 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
     await this.autoCancelExpiredUnpaidOrders();
 
     let whereCondition: any;
-    if (userId && Number(userId) > 0 && cleanPhone && cleanPhone.length >= 9) {
+    if (effectiveUserId && cleanPhone && cleanPhone.length >= 9) {
       whereCondition = [
-        { userId: Number(userId) },
+        { userId: effectiveUserId },
         { deliveryAddress: Like(`%${cleanPhone}%`) },
       ];
-    } else if (userId && Number(userId) > 0) {
-      whereCondition = { userId: Number(userId) };
+    } else if (effectiveUserId) {
+      whereCondition = { userId: effectiveUserId };
     } else {
       whereCondition = { deliveryAddress: Like(`%${cleanPhone}%`) };
     }

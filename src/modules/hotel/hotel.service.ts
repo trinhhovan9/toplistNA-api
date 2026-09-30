@@ -732,8 +732,27 @@ export class HotelService {
   /**
    * Đặt phòng khách sạn (Snapshot giá & Ngăn ngừa Overbooking)
    */
-  async createBooking(userId: number | null, dto: CreateHotelBookingDto) {
-    const resolvedUserId = userId && !isNaN(Number(userId)) && Number(userId) > 0 ? Number(userId) : null;
+  async createBooking(userId: number | null, dto: CreateHotelBookingDto & { username?: string }) {
+    let resolvedUserId = userId && !isNaN(Number(userId)) && Number(userId) > 0 ? Number(userId) : null;
+
+    if (!resolvedUserId && dto.username && dto.username.trim().length > 0) {
+      try {
+        const uRows = await this.listingRepo.query('SELECT id FROM users WHERE username = ? LIMIT 1', [dto.username.trim()]);
+        if (uRows && uRows.length > 0) resolvedUserId = Number(uRows[0].id);
+      } catch (_) {}
+    }
+    if (!resolvedUserId && dto.phoneNumber) {
+      const cleanPhone = dto.phoneNumber.replace(/\D/g, '');
+      if (cleanPhone.length >= 9) {
+        try {
+          const uRows = await this.listingRepo.query(
+            'SELECT id FROM users WHERE phone = ? OR phone = ? LIMIT 1',
+            [cleanPhone, '0' + cleanPhone.replace(/^84/, '')],
+          );
+          if (uRows && uRows.length > 0) resolvedUserId = Number(uRows[0].id);
+        } catch (_) {}
+      }
+    }
 
     const hotel = await this.listingRepo.findOne({ where: { id: dto.hotelId } });
     if (!hotel) throw new NotFoundException('Khách sạn không tồn tại');
@@ -986,16 +1005,24 @@ export class HotelService {
   /**
    * Danh sách đơn đặt phòng của khách hàng (theo userId hoặc số điện thoại)
    */
-  async getCustomerBookings(filter: { userId?: number; phone?: string }) {
+  async getCustomerBookings(filter: { userId?: number; phone?: string; username?: string }) {
+    let effectiveUserId = filter.userId && Number(filter.userId) > 0 ? Number(filter.userId) : undefined;
+    if (!effectiveUserId && filter.username && filter.username.trim().length > 0) {
+      try {
+        const uRows = await this.listingRepo.query('SELECT id FROM users WHERE username = ? LIMIT 1', [filter.username.trim()]);
+        if (uRows && uRows.length > 0) effectiveUserId = Number(uRows[0].id);
+      } catch (_) {}
+    }
+
     const qb = this.reservationRepo.createQueryBuilder('r')
       .orderBy('r.id', 'DESC');
 
     const conditions: string[] = [];
     const params: any = {};
 
-    if (filter.userId && Number(filter.userId) > 0) {
+    if (effectiveUserId && effectiveUserId > 0) {
       conditions.push('r.user_id = :userId');
-      params.userId = Number(filter.userId);
+      params.userId = effectiveUserId;
     }
     if (filter.phone) {
       const cleanPhone = filter.phone.replace(/\D/g, '');

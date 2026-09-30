@@ -48,6 +48,7 @@ export class CreateHotelBookingDto {
   @IsOptional() @IsInt() physical_room_id?: number;
   @IsOptional() @IsString() room_number?: string;
   @IsOptional() @IsInt() user_id?: number;
+  @IsOptional() @IsString() username?: string;
 }
 
 export class CreateRoomTypeDto {
@@ -206,6 +207,7 @@ export class HotelController {
       note: dto.note,
       physicalRoomId: dto.physical_room_id,
       roomNumber: dto.room_number,
+      username: dto.username,
     });
     return { success: true, data, message: 'Đặt phòng thành công!' };
   }
@@ -215,16 +217,19 @@ export class HotelController {
   @ApiOperation({ summary: 'Lấy danh sách đơn đặt phòng của khách hàng' })
   @ApiQuery({ name: 'userId', required: false, type: Number })
   @ApiQuery({ name: 'phone', required: false, type: String })
+  @ApiQuery({ name: 'username', required: false, type: String })
   async getMyBookings(
     @Query('userId') queryUserId?: string,
     @Query('phone') queryPhone?: string,
+    @Query('username') queryUsername?: string,
     @Headers('x-user-id') headerUserId?: string,
     @Request() req?: any,
   ) {
     const rawId = queryUserId || headerUserId || extractUserIdFromRequest(req);
     const userId = rawId ? parseInt(String(rawId), 10) : undefined;
     const phone = queryPhone?.trim();
-    const data = await this.hotelService.getCustomerBookings({ userId, phone });
+    const username = queryUsername?.trim();
+    const data = await this.hotelService.getCustomerBookings({ userId, phone, username });
     return { success: true, data };
   }
 
