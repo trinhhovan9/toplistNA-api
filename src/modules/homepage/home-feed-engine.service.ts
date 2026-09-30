@@ -218,33 +218,6 @@ export class HomeFeedEngineService {
       }
     }
 
-    // 6. Đảm bảo các key bộ sưu tập mặc định của Mobile App không bị ẩn do thiếu trong DB
-    const standardKeys = [
-      { key: 'trending_brands', title: 'Thương Hiệu Nổi Bật' },
-      { key: 'specialty_nghe_an', title: 'Đặc Sản Xứ Nghệ' },
-      { key: 'milk_tea_dessert', title: 'Trà Sữa & Giải Nhiệt' },
-      { key: 'delicious_cheap', title: 'Ăn Ngon Giá Rẻ' },
-      { key: 'fastfood_snacks', title: 'Fast Food & Ăn Vặt' },
-      { key: 'preferred_shops', title: 'Quán Quen Yêu Thích' },
-    ];
-    for (const sk of standardKeys) {
-      if (!sections.some((s) => s.key === sk.key)) {
-        sections.push({
-          key: sk.key,
-          title: sk.title,
-          subtitle: '',
-          badge: '',
-          bannerColor: '#EE4D2D',
-          bannerUrl: '',
-          type: 'GRID',
-          sourceType: 'CATEGORY',
-          rankingMode: 'POPULARITY',
-          totalAvailable: 0,
-          items: [],
-        });
-      }
-    }
-
     return {
       feedSessionId,
       userLat,
