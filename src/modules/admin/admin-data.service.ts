@@ -1902,6 +1902,54 @@ export class AdminDataService {
     ua: string,
   ) {
     const adminInfo = this.extractAdmin(admin);
+
+    if (dto.platform === 'all') {
+      const androidUrl = dto.updateUrl?.includes('play.google')
+        ? dto.updateUrl
+        : 'https://play.google.com/store/apps/details?id=com.firegotech.toplistna&pcampaignid=web_share';
+      const iosUrl = dto.updateUrl?.includes('apple.com')
+        ? dto.updateUrl
+        : 'https://apps.apple.com/vn/app/toplist-ngh%E1%BB%87-an/id6793058165?l=vi';
+
+      const vAndroid = this.appVersionRepo.create({
+        platform: 'android',
+        version: dto.version,
+        buildNumber: Number(dto.buildNumber || 1),
+        forceUpdate: Boolean(dto.forceUpdate),
+        updateUrl: androidUrl,
+        message: dto.message || '',
+        isActive: true,
+      });
+
+      const vIos = this.appVersionRepo.create({
+        platform: 'ios',
+        version: dto.version,
+        buildNumber: Number(dto.buildNumber || 1),
+        forceUpdate: Boolean(dto.forceUpdate),
+        updateUrl: iosUrl,
+        message: dto.message || '',
+        isActive: true,
+      });
+
+      const savedList = await this.appVersionRepo.save([vAndroid, vIos]);
+
+      await this.auditService.log({
+        adminId: adminInfo.id,
+        adminName: adminInfo.name,
+        adminEmail: adminInfo.email,
+        action: 'CREATE',
+        targetType: 'APP_VERSION',
+        targetId: `${savedList[0].id},${savedList[1].id}`,
+        description: `Phát hành phiên bản App mới cho cả Android & iOS: v${dto.version} (Build ${dto.buildNumber})`,
+        beforeData: null,
+        afterData: savedList,
+        ipAddress: ip,
+        userAgent: ua,
+      });
+
+      return { success: true, data: savedList[0] };
+    }
+
     const ver = this.appVersionRepo.create({
       platform: dto.platform,
       version: dto.version,

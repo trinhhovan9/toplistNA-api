@@ -208,28 +208,60 @@ export class HomepageService {
       is_force_update: false,
       update_title: 'Bản cập nhật mới',
       update_message: 'Vui lòng cập nhật ứng dụng Toplist Nghệ An để trải nghiệm phiên bản mới nhất!',
-      app_store_url: 'https://apps.apple.com',
-      play_store_url: 'https://play.google.com/store/apps/details?id=vn.toplistna.app',
+      app_store_url: 'https://apps.apple.com/vn/app/toplist-ngh%E1%BB%87-an/id6793058165?l=vi',
+      play_store_url: 'https://play.google.com/store/apps/details?id=com.firegotech.toplistna&pcampaignid=web_share',
     };
 
     try {
       // 1. Kiểm tra từ bảng app_versions nếu có
       const cleanPlatform = (platform || 'android').toLowerCase().includes('ios') ? 'ios' : 'android';
-      const rows = await this.dataSource.query(
-        'SELECT * FROM app_versions WHERE platform = ? AND is_active = 1 ORDER BY id DESC LIMIT 1',
-        [cleanPlatform]
+      const allRows = await this.dataSource.query(
+        'SELECT * FROM app_versions WHERE is_active = 1 ORDER BY id DESC'
       );
-      if (rows && rows.length > 0) {
-        const row = rows[0];
+      if (allRows && allRows.length > 0) {
+        // Tìm bản ghi tốt nhất cho nền tảng hiện tại:
+        let matchedRow = allRows.find((r: any) => r.platform === cleanPlatform);
+
+        // Nếu bản ghi có link Store tương ứng với nền tảng, ưu tiên nhận diện
+        const storeMatchedRow = allRows.find((r: any) =>
+          cleanPlatform === 'android'
+            ? (r.update_url && r.update_url.toLowerCase().includes('play.google'))
+            : (r.update_url && (r.update_url.toLowerCase().includes('apple.com') || r.update_url.toLowerCase().includes('apps.apple')))
+        );
+
+        if (storeMatchedRow && (!matchedRow || storeMatchedRow.id > matchedRow.id)) {
+          matchedRow = storeMatchedRow;
+        }
+
+        // Lấy version lớn nhất trên toàn bộ hệ thống (đảm bảo khi admin đẩy lên 1.0.4 thì app đều nhận biết)
+        let maxVersion = matchedRow?.version || '1.0.0';
+        for (const r of allRows) {
+          if (r.version && this.compareSemver(r.version, maxVersion) > 0) {
+            maxVersion = r.version;
+          }
+        }
+
+        const chosenRow = matchedRow || allRows[0];
+
+        // Lấy URL cập nhật chuẩn cho store
+        let playStoreUrl = defaults.play_store_url;
+        let appStoreUrl = defaults.app_store_url;
+        for (const r of allRows) {
+          if (r.update_url) {
+            if (r.update_url.toLowerCase().includes('play.google')) playStoreUrl = r.update_url;
+            if (r.update_url.toLowerCase().includes('apple.com')) appStoreUrl = r.update_url;
+          }
+        }
+
         return {
           ...defaults,
-          latest_version: row.version || '1.0.0',
-          min_version: row.force_update ? row.version : '1.0.0',
-          is_force_update: Boolean(row.force_update),
+          latest_version: maxVersion,
+          min_version: chosenRow.force_update ? maxVersion : '1.0.0',
+          is_force_update: Boolean(chosenRow.force_update),
           update_title: 'Bản cập nhật mới',
-          update_message: row.message || defaults.update_message,
-          play_store_url: row.platform === 'android' && row.update_url ? row.update_url : defaults.play_store_url,
-          app_store_url: row.platform === 'ios' && row.update_url ? row.update_url : defaults.app_store_url,
+          update_message: chosenRow.message || defaults.update_message,
+          play_store_url: playStoreUrl,
+          app_store_url: appStoreUrl,
         };
       }
 
@@ -244,6 +276,23 @@ export class HomepageService {
     } catch (_) {}
 
     return defaults;
+  }
+
+  private compareSemver(v1: string, v2: string): number {
+    try {
+      const p1 = (v1 || '').split('.').map((x) => parseInt(x, 10) || 0);
+      const p2 = (v2 || '').split('.').map((x) => parseInt(x, 10) || 0);
+      const maxLen = Math.max(p1.length, p2.length);
+      for (let i = 0; i < maxLen; i++) {
+        const num1 = p1[i] || 0;
+        const num2 = p2[i] || 0;
+        if (num1 > num2) return 1;
+        if (num1 < num2) return -1;
+      }
+      return 0;
+    } catch (_) {
+      return 0;
+    }
   }
 
   async getHomepage(lat?: number, lng?: number) {
