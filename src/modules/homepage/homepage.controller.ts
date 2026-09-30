@@ -79,6 +79,92 @@ export class HomepageController {
       } catch (_) {}
     }
 
+    // 1. Nếu key là meal collection theo buổi (ví dụ: meal_lunch, meal_breakfast, ...)
+    const cleanMealKey = key.replace(/^meal_/, '').toLowerCase();
+    if (['breakfast', 'lunch', 'afternoon', 'dinner'].includes(cleanMealKey)) {
+      const userLat = lat ? parseFloat(lat) : 18.6732;
+      const userLng = lng ? parseFloat(lng) : 105.6881;
+      const mealData = await this.homepageService.getMealSuggestions(cleanMealKey, userLat, userLng, 60);
+
+      let rawItems = (mealData.items || []).map((it: any) => ({
+        id: it.id,
+        name: it.dish_name || it.name,
+        dish_name: it.dish_name || it.name,
+        store_id: it.restaurant_id,
+        store_name: it.restaurant_name,
+        store_address: it.restaurant_address || 'TP Vinh, Nghệ An',
+        store_image: it.image,
+        store_rating_avg: it.rating,
+        restaurant_id: it.restaurant_id,
+        restaurant_name: it.restaurant_name,
+        restaurant_address: it.restaurant_address || 'TP Vinh, Nghệ An',
+        restaurant_image: it.image,
+        price: it.price,
+        original_price: it.original_price,
+        discount_percent: it.discount ? parseInt(it.discount.replace(/[^0-9]/g, ''), 10) : 0,
+        rating: it.rating,
+        distance_km: it.distance_km || 1.2,
+        delivery_time: it.delivery_time || '15-20 phút',
+        image: it.image,
+        image_url: it.image,
+        sold_count: it.sold_count,
+        sold_text: it.sold_count,
+        badge: it.badge || 'Gợi ý',
+        tag: it.category_name || it.tag || 'Món ngon',
+        category_name: it.category_name,
+        is_available: true,
+        tags: it.tags || [],
+      }));
+
+      // Live search filter
+      if (search && search.trim().length > 0) {
+        const s = search.toLowerCase().trim();
+        rawItems = rawItems.filter(
+          (it: any) =>
+            (it.name || '').toLowerCase().includes(s) ||
+            (it.store_name || '').toLowerCase().includes(s) ||
+            (it.category_name || '').toLowerCase().includes(s),
+        );
+      }
+
+      // Price filter
+      if (priceMax) rawItems = rawItems.filter((it: any) => it.price <= Number(priceMax));
+      if (priceMin) rawItems = rawItems.filter((it: any) => it.price >= Number(priceMin));
+
+      // Rating filter
+      if (ratingMin) rawItems = rawItems.filter((it: any) => (it.rating || 0) >= Number(ratingMin));
+
+      // Sort
+      if (sort === 'discount') rawItems.sort((a: any, b: any) => (b.discount_percent || 0) - (a.discount_percent || 0));
+      else if (sort === 'price_asc') rawItems.sort((a: any, b: any) => a.price - b.price);
+      else if (sort === 'price_desc') rawItems.sort((a: any, b: any) => b.price - a.price);
+      else if (sort === 'rating') rawItems.sort((a: any, b: any) => (b.rating || 0) - (a.rating || 0));
+      else if (sort === 'nearby' || sort === 'nearest') rawItems.sort((a: any, b: any) => (a.distance_km || 0) - (b.distance_km || 0));
+      else if (sort === 'popular') rawItems.sort((a: any, b: any) => (b.sold_count || 0) - (a.sold_count || 0));
+
+      const pageNum = page ? parseInt(page) : 1;
+      const limitNum = limit ? parseInt(limit) : 20;
+      const total = rawItems.length;
+      const start = (pageNum - 1) * limitNum;
+      const paginatedItems = rawItems.slice(start, start + limitNum);
+
+      return {
+        success: true,
+        collection: {
+          title: mealData.title,
+          subtitle: mealData.subtitle,
+          badge: mealData.badge,
+          headerColor: mealData.header_color,
+          gradientColors: mealData.gradient_colors,
+        },
+        items: paginatedItems,
+        total,
+        page: pageNum,
+        limit: limitNum,
+        hasMore: start + limitNum < total,
+      };
+    }
+
     const res = await this.feedEngineService.getCollectionItems(key, {
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 20,
