@@ -19,8 +19,14 @@ function extractUserIdFromRequest(req: any): number | null {
     return Number(customHeader);
   }
 
-  if (req.query?.userId && !isNaN(Number(req.query.userId)) && Number(req.query.userId) > 0) {
-    return Number(req.query.userId);
+  const queryId = req.query?.userId ?? req.query?.user_id;
+  if (queryId && !isNaN(Number(queryId)) && Number(queryId) > 0) {
+    return Number(queryId);
+  }
+
+  const bodyId = req.body?.user_id ?? req.body?.userId;
+  if (bodyId && !isNaN(Number(bodyId)) && Number(bodyId) > 0) {
+    return Number(bodyId);
   }
 
   const authHeader = req.headers?.authorization || req.headers?.Authorization;
@@ -30,7 +36,7 @@ function extractUserIdFromRequest(req: any): number | null {
     const parts = token.split('.');
     if (parts.length === 3) {
       const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
-      const id = payload.sub ?? payload.id ?? payload.userId;
+      const id = payload.sub ?? payload.id ?? payload.userId ?? payload.user?.id;
       if (id && !isNaN(Number(id)) && Number(id) > 0) return Number(id);
     }
   } catch (_) {}
@@ -38,6 +44,8 @@ function extractUserIdFromRequest(req: any): number | null {
 }
 
 export class CheckoutDto {
+  @IsOptional() user_id?: number;
+  @IsOptional() userId?: number;
   @IsOptional() listing_id?: number;
   @IsOptional() @IsString() delivery_address?: string;
   @IsOptional() @IsString() recipient_name?: string;
@@ -65,7 +73,8 @@ export class OrderController {
   @Post('checkout')
   @ApiOperation({ summary: 'Tạo đơn hàng đồ ăn và lưu vào CSDL' })
   async checkout(@Request() req, @Body() dto: CheckoutDto) {
-    const userId = req.user?.id ?? extractUserIdFromRequest(req) ?? null;
+    const rawUserId = dto.user_id ?? dto.userId ?? req.user?.id ?? extractUserIdFromRequest(req);
+    const userId = rawUserId && !isNaN(Number(rawUserId)) && Number(rawUserId) > 0 ? Number(rawUserId) : null;
     const data = await this.orderService.checkout(
       userId,
       dto.delivery_address || 'TP Vinh, Nghệ An',
@@ -90,10 +99,11 @@ export class OrderController {
   async getMyOrders(
     @Request() req,
     @Query('userId') queryUserId?: string,
+    @Query('phone') queryPhone?: string,
   ) {
     const rawId = queryUserId || req.user?.id || extractUserIdFromRequest(req);
     const userId = rawId && !isNaN(Number(rawId)) && Number(rawId) > 0 ? Number(rawId) : null;
-    const data = await this.orderService.getUserOrders(userId);
+    const data = await this.orderService.getUserOrders(userId, queryPhone);
     return { success: true, data };
   }
 

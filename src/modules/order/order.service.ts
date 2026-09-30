@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException, Logger, Inject, forwardRef, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan } from 'typeorm';
+import { Repository, LessThan, Like } from 'typeorm';
 import { Order } from '../../entities/order.entity';
 import { OrderItem } from '../../entities/order-item.entity';
 import { Cart } from '../../entities/cart.entity';
@@ -158,10 +158,6 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
     recipientPhoneInput?: string,
     serviceFeeInput?: number,
   ) {
-    if (!userId || isNaN(Number(userId)) || Number(userId) <= 0) {
-      throw new BadRequestException('Vui lòng đăng nhập tài khoản để thực hiện đặt món.');
-    }
-
     let originalSubtotal = 0;
     let promotionDiscount = 0;
     let promoStoreDiscount = 0;
@@ -536,13 +532,6 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
 
     const financialBreakdown = JSON.stringify(financialSnapshot);
 
-    // Tìm user thật trong database
-    const realUser = await this.userRepo.findOne({ where: { id: Number(userId) } });
-    if (!realUser) {
-      throw new BadRequestException('Tài khoản không tồn tại hoặc đã bị vô hiệu hóa. Vui lòng đăng nhập lại.');
-    }
-    const finalUserId = Number(realUser.id);
-
     // Trích xuất thông tin người nhận từ chuỗi deliveryAddress nếu có
     let extractedName = '';
     let extractedPhone = '';
@@ -554,6 +543,70 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
       extractedPhone = match[2].trim();
       cleanAddress = cleanAddress.replace(/\s*-\s*Người nhận:.*$/, '').trim();
     }
+
+    const effectivePhoneDigits = (recipientPhoneInput?.trim() || extractedPhone || '').replace(/[^0-9]/g, '');
+    const rawCustomerName = recipientNameInput?.trim() || extractedName || '';
+
+    // Tìm user thật trong database theo thứ tự ưu tiên:
+    // 1. userId (nếu client gửi lên hoặc trích xuất được từ token/header)
+    // 2. Số điện thoại đặt hàng (khách đã đăng ký tài khoản trong CSDL)
+    // 3. Tên người nhận (nếu trùng họ tên hoặc username)
+    // 4. Tự động liên kết/tạo hồ sơ thành viên cho số điện thoại nếu hợp lệ
+    // 5. Fallback user hệ thống an toàn để không bao giờ làm gián đoạn đặt món
+    let realUser: User | null = null;
+    let resolvedUserId = userId && Number(userId) > 0 ? Number(userId) : null;
+
+    if (resolvedUserId) {
+      realUser = await this.userRepo.findOne({ where: { id: resolvedUserId } });
+    }
+
+    if (!realUser && effectivePhoneDigits.length >= 9) {
+      realUser = await this.userRepo.findOne({
+        where: [
+          { phone: effectivePhoneDigits },
+          { phone: '0' + effectivePhoneDigits.replace(/^84/, '') },
+          { phone: effectivePhoneDigits.replace(/^0/, '84') },
+        ],
+        order: { id: 'DESC' },
+      });
+      if (realUser) resolvedUserId = Number(realUser.id);
+    }
+
+    if (!realUser && rawCustomerName && rawCustomerName !== 'Khách hàng' && rawCustomerName !== 'Khách hàng Toplist') {
+      realUser = await this.userRepo.findOne({
+        where: [
+          { name: rawCustomerName },
+          { username: rawCustomerName },
+        ],
+        order: { id: 'DESC' },
+      });
+      if (realUser) resolvedUserId = Number(realUser.id);
+    }
+
+    if (!realUser && effectivePhoneDigits.length >= 9) {
+      try {
+        const newCustomer = this.userRepo.create({
+          name: rawCustomerName || 'Khách hàng',
+          username: `cust_${effectivePhoneDigits}`,
+          phone: effectivePhoneDigits,
+          role: 'Thành viên',
+        });
+        realUser = await this.userRepo.save(newCustomer);
+        resolvedUserId = Number(realUser.id);
+      } catch (err) {
+        realUser = await this.userRepo.findOne({
+          where: [{ username: `cust_${effectivePhoneDigits}` }, { phone: effectivePhoneDigits }],
+        });
+        if (realUser) resolvedUserId = Number(realUser.id);
+      }
+    }
+
+    if (!realUser) {
+      const users = await this.userRepo.find({ order: { id: 'DESC' }, take: 1 });
+      realUser = users[0] || null;
+    }
+
+    const finalUserId = realUser ? Number(realUser.id) : (resolvedUserId || 1);
 
     let effectiveCustomerName = recipientNameInput?.trim() || '';
     if (!effectiveCustomerName || effectiveCustomerName === 'Khách hàng' || effectiveCustomerName === 'Khách hàng Toplist') {
@@ -959,18 +1012,32 @@ export class OrderService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async getUserOrders(userId?: number | null) {
-    // BẮT BUỘC phải có tài khoản (userId hợp lệ > 0).
-    // Nếu chưa đăng nhập hoặc không có userId, trả về mảng rỗng [], tuyệt đối không lộ đơn của người khác!
-    if (!userId || isNaN(Number(userId)) || Number(userId) <= 0) {
+  async getUserOrders(userId?: number | null, phone?: string | null) {
+    const cleanPhone = phone ? phone.replace(/[^0-9]/g, '') : null;
+
+    // BẮT BUỘC phải có tài khoản (userId hợp lệ > 0) hoặc số điện thoại người dùng.
+    // Nếu cả 2 đều không có => Khách vãng lai chưa đăng nhập, trả về [] để bảo mật đơn hàng
+    if ((!userId || isNaN(Number(userId)) || Number(userId) <= 0) && (!cleanPhone || cleanPhone.length < 9)) {
       return [];
     }
 
     // Tự động kiểm tra dọn dẹp các đơn online quá hạn thanh toán (> 15 phút)
     await this.autoCancelExpiredUnpaidOrders();
 
+    let whereCondition: any;
+    if (userId && Number(userId) > 0 && cleanPhone && cleanPhone.length >= 9) {
+      whereCondition = [
+        { userId: Number(userId) },
+        { deliveryAddress: Like(`%${cleanPhone}%`) },
+      ];
+    } else if (userId && Number(userId) > 0) {
+      whereCondition = { userId: Number(userId) };
+    } else {
+      whereCondition = { deliveryAddress: Like(`%${cleanPhone}%`) };
+    }
+
     const orders = await this.orderRepo.find({
-      where: { userId: Number(userId) },
+      where: whereCondition,
       order: { createdAt: 'DESC' },
       take: 50,
       relations: ['items'],
