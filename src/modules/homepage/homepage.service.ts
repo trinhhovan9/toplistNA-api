@@ -713,16 +713,22 @@ export class HomepageService {
           l.rating_avg,
           l.rating_count,
           l.thumb as store_thumb,
+          COALESCE(oi.sold_qty, 0) as real_sold_count,
           GROUP_CONCAT(DISTINCT t.name SEPARATOR ', ') as tags_str
         FROM menu_items mi
         JOIN listings l ON mi.listing_id = l.id
+        LEFT JOIN (
+          SELECT menu_item_id, SUM(quantity) as sold_qty
+          FROM order_items
+          GROUP BY menu_item_id
+        ) oi ON oi.menu_item_id = mi.id
         LEFT JOIN taggables tg ON l.id = tg.taggable_id AND tg.taggable_type = 'listings'
         LEFT JOIN tags t ON t.id = tg.tag_id AND (${tagConditions})
         WHERE mi.is_available = 1
           AND (${catConditions} OR ${nameConditions} OR t.id IS NOT NULL)
         GROUP BY 
           mi.id, mi.name, mi.price, mi.original_price, mi.image_url, mi.category_name,
-          l.id, l.name, l.address, l.latitude, l.longitude, l.rating_avg, l.rating_count, l.thumb
+          l.id, l.name, l.address, l.latitude, l.longitude, l.rating_avg, l.rating_count, l.thumb, oi.sold_qty
         ORDER BY l.rating_avg DESC, mi.id DESC
         LIMIT 40
       `;
@@ -750,6 +756,12 @@ export class HomepageService {
           resolvedImage = `https://toplistnghean.vn${resolvedImage}`;
         }
 
+        const realRating = (r.rating_avg && Number(r.rating_avg) > 0)
+          ? Number(Number(r.rating_avg).toFixed(1))
+          : null;
+        const realRatingCount = Number(r.rating_count) || 0;
+        const realSold = Number(r.real_sold_count) || 0;
+
         return {
           id: Number(r.id),
           dish_name: r.dish_name,
@@ -761,14 +773,14 @@ export class HomepageService {
           restaurant_id: Number(r.restaurant_id),
           restaurant_name: r.restaurant_name,
           restaurant_address: r.restaurant_address,
-          rating: r.rating_avg ? Number(Number(r.rating_avg).toFixed(1)) : 4.8,
-          rating_count: r.rating_count || 120,
-          sold_count: `${(Number(r.id) * 17 % 250) + 80}+ đã bán`,
+          rating: realRating,
+          rating_count: realRatingCount,
+          sold_count: realSold > 0 ? `Đã bán ${realSold}` : null,
           delivery_time: deliveryTimeStr,
           distance: distStr,
           distance_km: Number(distKm.toFixed(1)),
           badge: currentConfig.badge,
-          tag: 'Freeship 0Đ',
+          tag: r.category_name || 'Món ngon',
           image: resolvedImage,
           tags: r.tags_str ? r.tags_str.split(',').map((s: string) => s.trim()) : [],
         };
